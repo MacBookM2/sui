@@ -78,11 +78,7 @@ fn transfer_address_balance(
     );
 }
 
-// =============================================================================
-// Core Operations Tests
-// =============================================================================
-
-/// Test 1: Basic address balance creation via balance::send_funds
+/// Basic address balance creation via balance::send_funds
 #[tokio::test]
 async fn test_send_funds_creates_balance() {
     let mut cluster = FullCluster::new().await.unwrap();
@@ -111,7 +107,7 @@ async fn test_send_funds_creates_balance() {
     );
 }
 
-/// Test 2: Multiple send_funds to same address accumulate
+/// Multiple send_funds to same address accumulate
 #[tokio::test]
 async fn test_send_funds_accumulates() {
     let mut cluster = FullCluster::new().await.unwrap();
@@ -173,7 +169,7 @@ async fn test_send_funds_accumulates() {
     );
 }
 
-/// Test: Multiple coin types tracked per address
+/// Multiple coin types tracked per address
 #[tokio::test]
 async fn test_multiple_coin_types() {
     let mut cluster = FullCluster::new().await.unwrap();
@@ -289,11 +285,6 @@ async fn test_multiple_coin_types() {
     );
 }
 
-// =============================================================================
-// Snapshot Consistency Tests
-// =============================================================================
-
-/// Test: Historical checkpoint data is preserved
 #[tokio::test]
 async fn test_snapshot_consistency() {
     let mut cluster = FullCluster::new().await.unwrap();
@@ -364,10 +355,6 @@ async fn test_snapshot_consistency() {
         ]
     );
 }
-
-// =============================================================================
-// Transfer Pattern Tests
-// =============================================================================
 
 /// Test: Address-to-address transfer (A withdraws from address balance, sends to B's address balance)
 #[tokio::test]
@@ -489,10 +476,6 @@ async fn test_transfer_all_deletes_source() {
         (vec![], None)
     );
 }
-
-// =============================================================================
-// Edge Cases and Error Handling Tests
-// =============================================================================
 
 #[tokio::test]
 async fn test_edge_cases() {
@@ -713,10 +696,6 @@ async fn test_edge_cases() {
     assert_eq!(err.code(), tonic::Code::OutOfRange);
     assert_eq!(err.message(), "Checkpoint 10 not in the consistent range");
 }
-
-// =============================================================================
-// RPC Helper Functions
-// =============================================================================
 
 /// Helper to perform forward pagination over balances.
 async fn list_balances(
