@@ -10,6 +10,8 @@ pub(crate) struct Key {
     #[bincode(with_serde)]
     pub(crate) owner: SuiAddress,
 
+    /// The inner type of some balance `Balance<T>`, e.g. for `0x2::balance::Balance<0x2::sui::SUI>`
+    /// this would be `0x2::sui::SUI`.
     #[bincode(with_serde)]
     pub(crate) type_: TypeTag,
 }
