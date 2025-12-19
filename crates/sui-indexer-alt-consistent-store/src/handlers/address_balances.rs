@@ -51,7 +51,6 @@ impl Processor for AddressBalances {
                 };
 
                 modified.insert(obj.id());
-
                 results.push(entry);
             }
 
@@ -70,7 +69,7 @@ impl Processor for AddressBalances {
             }
         }
 
-        Ok(vec![])
+        Ok(results)
     }
 }
 

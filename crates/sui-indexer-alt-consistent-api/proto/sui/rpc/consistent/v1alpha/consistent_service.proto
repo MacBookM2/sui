@@ -107,7 +107,7 @@ message ListBalancesResponse {
 
 message BatchGetAddressBalancesRequest { repeated GetAddressBalanceRequest requests = 1; }
 
-message BatchGetAddressBalancesResponse { repeated AddressBalance address_balances = 1; }
+message BatchGetAddressBalancesResponse { repeated AddressBalance balances = 1; }
 
 message GetAddressBalanceRequest {
   // Required. The address of the owner whose address balance is being requested.
@@ -149,7 +149,7 @@ message ListAddressBalancesResponse {
   optional bool has_next_page = 2;
 
   // Page of address balances owned by the specified owner.
-  repeated AddressBalance address_balances = 3;
+  repeated AddressBalance balances = 3;
 }
 
 

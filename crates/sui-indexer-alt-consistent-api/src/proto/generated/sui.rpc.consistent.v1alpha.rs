@@ -93,7 +93,7 @@ pub struct BatchGetAddressBalancesRequest {
 #[derive(Clone, PartialEq, ::prost::Message)]
 pub struct BatchGetAddressBalancesResponse {
     #[prost(message, repeated, tag = "1")]
-    pub address_balances: ::prost::alloc::vec::Vec<AddressBalance>,
+    pub balances: ::prost::alloc::vec::Vec<AddressBalance>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct GetAddressBalanceRequest {
@@ -139,7 +139,7 @@ pub struct ListAddressBalancesResponse {
     pub has_next_page: ::core::option::Option<bool>,
     /// Page of address balances owned by the specified owner.
     #[prost(message, repeated, tag = "3")]
-    pub address_balances: ::prost::alloc::vec::Vec<AddressBalance>,
+    pub balances: ::prost::alloc::vec::Vec<AddressBalance>,
 }
 #[derive(Clone, PartialEq, Eq, Hash, ::prost::Message)]
 pub struct ListObjectsByTypeRequest {
