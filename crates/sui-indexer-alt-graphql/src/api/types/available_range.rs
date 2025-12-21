@@ -17,7 +17,7 @@ use crate::{
 use super::checkpoint::Checkpoint;
 
 #[derive(thiserror::Error, Debug)]
-pub enum Error {
+pub(crate) enum Error {
     #[error("'{0}' is not an Object or Interface.")]
     NotAnObjectOrInterface(String),
 
