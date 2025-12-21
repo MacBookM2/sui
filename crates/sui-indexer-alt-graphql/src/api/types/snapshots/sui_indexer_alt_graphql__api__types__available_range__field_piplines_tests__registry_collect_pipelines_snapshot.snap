@@ -1412,6 +1412,12 @@ ServiceConfig.maxMoveValueBound
 ServiceConfig.maxDisplayFieldDepth
   => {}
 
+ServiceConfig.maxDisplayFormatNodes
+  => {}
+
+ServiceConfig.maxDisplayObjectLoads
+  => {}
+
 ServiceConfig.maxDisplayOutputSize
   => {}
 
