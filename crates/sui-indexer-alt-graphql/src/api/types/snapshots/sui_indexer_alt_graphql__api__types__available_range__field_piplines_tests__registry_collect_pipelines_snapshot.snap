@@ -29,6 +29,9 @@ ActiveJwk.epoch
 Address.address
   => {}
 
+Address.addressAt
+  => {}
+
 Address.asObject
   => {"obj_versions"}
 
@@ -206,6 +209,9 @@ CoinDenyListStateCreateTransaction._
 CoinMetadata.address
   => {}
 
+CoinMetadata.addressAt
+  => {}
+
 CoinMetadata.version
   => {}
 
@@ -363,6 +369,9 @@ DisplayRegistryCreateTransaction._
   => {}
 
 DynamicField.address
+  => {}
+
+DynamicField.addressAt
   => {}
 
 DynamicField.version
@@ -629,6 +638,9 @@ GenesisTransaction.objects
 IAddressable.address
   => {}
 
+IAddressable.addressAt
+  => {}
+
 IAddressable.balance
   => {"consistent"}
 
@@ -863,6 +875,9 @@ MoveModule.structs
 MoveObject.address
   => {}
 
+MoveObject.addressAt
+  => {}
+
 MoveObject.version
   => {}
 
@@ -939,6 +954,9 @@ MoveObject.receivedTransactions
   => {"cp_sequence_numbers", "tx_affected_addresses", "tx_digests"}
 
 MovePackage.address
+  => {}
+
+MovePackage.addressAt
   => {}
 
 MovePackage.version
@@ -1040,6 +1058,9 @@ MoveType.layout
 MoveType.abilities
   => {}
 
+MoveValue.asAddress
+  => {}
+
 MoveValue.bcs
   => {}
 
@@ -1065,6 +1086,9 @@ Mutation.executeTransaction
   => {}
 
 Object.address
+  => {}
+
+Object.addressAt
   => {}
 
 Object.version
@@ -1614,6 +1638,9 @@ UserSignature.signatureBytes
   => {}
 
 Validator.address
+  => {}
+
+Validator.addressAt
   => {}
 
 Validator.balance

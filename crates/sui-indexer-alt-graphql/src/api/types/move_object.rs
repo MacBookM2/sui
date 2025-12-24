@@ -10,9 +10,12 @@ use sui_types::{dynamic_field::DynamicFieldType, object::MoveObject as NativeMov
 use tokio::sync::OnceCell;
 
 use crate::{
-    api::scalars::{
-        base64::Base64, big_int::BigInt, sui_address::SuiAddress, type_filter::TypeInput,
-        uint53::UInt53,
+    api::{
+        scalars::{
+            base64::Base64, big_int::BigInt, sui_address::SuiAddress, type_filter::TypeInput,
+            uint53::UInt53,
+        },
+        types::address::Address,
     },
     error::RpcError,
     pagination::{Page, PaginationConfig},
@@ -107,6 +110,15 @@ impl MoveObject {
         self.super_.address(ctx).await
     }
 
+    /// Fetch the address as it was at a different checkpoint. Defaults to the latest checkpoint.
+    pub(crate) async fn address_at(
+        &self,
+        ctx: &Context<'_>,
+        checkpoint: Option<UInt53>,
+    ) -> Result<Option<Address>, RpcError> {
+        self.super_.address_at(ctx, checkpoint).await
+    }
+
     /// The version of this object that this content comes from.
     pub(crate) async fn version(&self, ctx: &Context<'_>) -> Option<Result<UInt53, RpcError>> {
         self.super_.version(ctx).await.ok()?
@@ -162,11 +174,13 @@ impl MoveObject {
             return Ok(None);
         };
 
-        let type_ = MoveType::from_native(
-            native.type_().clone().into(),
-            self.super_.super_.scope.clone(),
-        );
+        let scope = self
+            .super_
+            .super_
+            .scope
+            .with_root_version(native.version().value());
 
+        let type_ = MoveType::from_native(native.type_().clone().into(), scope);
         Ok(Some(MoveValue::new(type_, native.contents().to_owned())))
     }
 

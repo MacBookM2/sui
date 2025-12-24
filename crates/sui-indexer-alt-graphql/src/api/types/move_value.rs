@@ -15,6 +15,7 @@ use sui_indexer_alt_reader::{displays::DisplayKey, pg_reader::PgReader};
 use sui_types::{
     TypeTag,
     display::DisplayVersionUpdatedEvent,
+    id::{ID, UID},
     object::{option_visitor as OV, rpc_visitor as RV},
 };
 use tokio::join;
@@ -29,7 +30,7 @@ use crate::{
     scope::Scope,
 };
 
-use super::{display::Display, move_type::MoveType};
+use super::{address::Address, display::Display, move_type::MoveType};
 
 #[derive(Clone)]
 pub(crate) struct MoveValue {
@@ -80,6 +81,49 @@ enum VisitorError {
 
 #[Object]
 impl MoveValue {
+    /// Attempts to treat this value as an `Address`.
+    ///
+    /// If the value is of type `address` or `0x2::object::ID`, it is interpreted as an address pointer, and it is scoped to the current checkpoint.
+    ///
+    /// If the value is of type `0x2::object::UID`, it is interpreted as a wrapped object whose version is bounded by the root version of the current value. Such values do not support nested owned object queries, but `Address.addressAt` can be used to re-scope it to a checkpoint (defaults to the current checkpoint), instead of a root version, allowing owned object queries.
+    ///
+    /// Values of other types cannot be interpreted as addresses, and `null` is returned.
+    async fn as_address(&self) -> Result<Option<Address>, RpcError> {
+        use TypeTag as T;
+
+        let Some(tag) = self.type_.to_type_tag() else {
+            return Ok(None);
+        };
+
+        match tag {
+            T::Address => {
+                let address = bcs::from_bytes(&self.native)?;
+                Ok(Some(Address::with_address(
+                    self.type_.scope.without_root_version(),
+                    address,
+                )))
+            }
+
+            T::Struct(s) if *s == ID::type_() => {
+                let address = bcs::from_bytes(&self.native)?;
+                Ok(Some(Address::with_address(
+                    self.type_.scope.without_root_version(),
+                    address,
+                )))
+            }
+
+            T::Struct(s) if *s == UID::type_() => {
+                let address = bcs::from_bytes(&self.native)?;
+                Ok(Some(Address::with_address(
+                    self.type_.scope.clone(),
+                    address,
+                )))
+            }
+
+            _ => Ok(None),
+        }
+    }
+
     /// The BCS representation of this value, Base64-encoded.
     async fn bcs(&self) -> Option<Base64> {
         Some(Base64::from(self.native.clone()))

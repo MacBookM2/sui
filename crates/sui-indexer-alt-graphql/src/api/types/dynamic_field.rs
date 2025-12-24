@@ -17,13 +17,16 @@ use sui_types::{
 use tokio::sync::OnceCell;
 
 use crate::{
-    api::scalars::{
-        base64::Base64,
-        big_int::BigInt,
-        owner_kind::OwnerKind,
-        sui_address::SuiAddress,
-        type_filter::{TypeFilter, TypeInput},
-        uint53::UInt53,
+    api::{
+        scalars::{
+            base64::Base64,
+            big_int::BigInt,
+            owner_kind::OwnerKind,
+            sui_address::SuiAddress,
+            type_filter::{TypeFilter, TypeInput},
+            uint53::UInt53,
+        },
+        types::address::Address,
     },
     error::RpcError,
     pagination::Page,
@@ -100,6 +103,15 @@ impl DynamicField {
     /// The DynamicField's ID.
     pub(crate) async fn address(&self, ctx: &Context<'_>) -> Result<SuiAddress, RpcError> {
         self.super_.address(ctx).await
+    }
+
+    /// Fetch the address as it was at a different checkpoint. Defaults to the latest checkpoint.
+    pub(crate) async fn address_at(
+        &self,
+        ctx: &Context<'_>,
+        checkpoint: Option<UInt53>,
+    ) -> Result<Option<Address>, RpcError> {
+        self.super_.address_at(ctx, checkpoint).await
     }
 
     /// The version of this object that this content comes from.
