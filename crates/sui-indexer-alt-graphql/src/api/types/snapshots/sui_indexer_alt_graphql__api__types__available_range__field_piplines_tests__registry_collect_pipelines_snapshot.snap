@@ -1070,6 +1070,9 @@ MoveValue.display
 MoveValue.extract
   => {}
 
+MoveValue.format
+  => {}
+
 MoveValue.json
   => {}
 
