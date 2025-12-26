@@ -13,7 +13,7 @@ use crate::{
         scalars::{
             owner_kind::OwnerKind, sui_address::SuiAddress, type_filter::TypeInput, uint53::UInt53,
         },
-        types::validator::Validator,
+        types::{dynamic_field, validator::Validator},
     },
     error::RpcError,
     pagination::{Page, PaginationConfig},
@@ -201,7 +201,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.scope.clone(),
@@ -240,7 +240,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.scope.clone(),
@@ -258,7 +258,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,
@@ -278,7 +278,7 @@ impl Address {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,

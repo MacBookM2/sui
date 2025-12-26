@@ -36,14 +36,17 @@ use sui_types::{
 use tokio::{join, sync::OnceCell};
 
 use crate::{
-    api::scalars::{
-        base64::Base64,
-        big_int::BigInt,
-        cursor::{BcsCursor, JsonCursor},
-        owner_kind::OwnerKind,
-        sui_address::SuiAddress,
-        type_filter::{TypeFilter, TypeInput},
-        uint53::UInt53,
+    api::{
+        scalars::{
+            base64::Base64,
+            big_int::BigInt,
+            cursor::{BcsCursor, JsonCursor},
+            owner_kind::OwnerKind,
+            sui_address::SuiAddress,
+            type_filter::{TypeFilter, TypeInput},
+            uint53::UInt53,
+        },
+        types::dynamic_field,
     },
     error::{RpcError, bad_user_input, feature_unavailable, upcast},
     intersect,
@@ -315,7 +318,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError<Error>> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.super_.scope.clone(),
@@ -324,7 +327,6 @@ impl Object {
             name,
         )
         .await
-        .map_err(upcast)
     }
 
     /// Dynamic fields owned by this object.
@@ -358,7 +360,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError<Error>> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         DynamicField::by_name(
             ctx,
             self.super_.scope.clone(),
@@ -367,7 +369,6 @@ impl Object {
             name,
         )
         .await
-        .map_err(upcast)
     }
 
     /// Access dynamic fields on an object using their types and BCS-encoded names.
@@ -377,7 +378,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError<Error>> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,
@@ -388,7 +389,6 @@ impl Object {
             )
         }))
         .await
-        .map_err(upcast)
     }
 
     /// Access dynamic object fields on an object using their types and BCS-encoded names.
@@ -398,7 +398,7 @@ impl Object {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError<Error>> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
                 ctx,
@@ -409,7 +409,6 @@ impl Object {
             )
         }))
         .await
-        .map_err(upcast)
     }
 
     /// Fetch the total balances keyed by coin types (e.g. `0x2::sui::SUI`) owned by this address.

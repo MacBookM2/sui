@@ -15,7 +15,7 @@ use crate::{
             base64::Base64, big_int::BigInt, sui_address::SuiAddress, type_filter::TypeInput,
             uint53::UInt53,
         },
-        types::address::Address,
+        types::{address::Address, dynamic_field},
     },
     error::RpcError,
     pagination::{Page, PaginationConfig},
@@ -199,7 +199,7 @@ impl MoveObject {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         let scope = &self.super_.super_.scope;
         DynamicField::by_name(
             ctx,
@@ -244,7 +244,7 @@ impl MoveObject {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         let scope = &self.super_.super_.scope;
         DynamicField::by_name(
             ctx,
@@ -285,7 +285,7 @@ impl MoveObject {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         let scope = &self.super_.super_.scope;
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(
@@ -317,7 +317,7 @@ impl MoveObject {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         let scope = &self.super_.super_.scope;
         try_join_all(keys.into_iter().map(|key| {
             DynamicField::by_name(

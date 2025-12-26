@@ -33,7 +33,7 @@ use crate::{
 
 use super::{
     balance::{self, Balance},
-    dynamic_field::{DynamicField, DynamicFieldName},
+    dynamic_field::{self, DynamicField, DynamicFieldName},
     move_object::MoveObject,
     move_value::MoveValue,
     object::{self, CLive, CVersion, Object, VersionFilter},
@@ -193,7 +193,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         self.super_.dynamic_field(ctx, name).await
     }
 
@@ -220,7 +220,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         name: DynamicFieldName,
-    ) -> Result<Option<DynamicField>, RpcError> {
+    ) -> Result<Option<DynamicField>, RpcError<dynamic_field::Error>> {
         self.super_.dynamic_object_field(ctx, name).await
     }
 
@@ -253,7 +253,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         self.super_.multi_get_dynamic_fields(ctx, keys).await
     }
 
@@ -264,7 +264,7 @@ impl CoinMetadata {
         &self,
         ctx: &Context<'_>,
         keys: Vec<DynamicFieldName>,
-    ) -> Result<Vec<Option<DynamicField>>, RpcError> {
+    ) -> Result<Vec<Option<DynamicField>>, RpcError<dynamic_field::Error>> {
         self.super_.multi_get_dynamic_object_fields(ctx, keys).await
     }
 

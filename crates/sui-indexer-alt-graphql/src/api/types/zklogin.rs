@@ -22,7 +22,7 @@ use tracing::warn;
 use crate::{
     api::{
         scalars::{base64::Base64, sui_address::SuiAddress, type_filter::TypeInput},
-        types::dynamic_field::{DynamicField, DynamicFieldName},
+        types::dynamic_field::DynamicField,
     },
     config::ZkLoginConfig,
     error::{RpcError, bad_user_input, upcast},
@@ -86,15 +86,13 @@ pub(crate) async fn verify_signature(
         return Err(bad_user_input(Error::NotZkLogin));
     };
 
-    let jwk_object = DynamicField::by_name(
+    let jwk_object = DynamicField::by_serialized_name(
         ctx,
         scope,
         SUI_AUTHENTICATOR_STATE_ADDRESS.into(),
         DynamicFieldType::DynamicField,
-        DynamicFieldName {
-            type_: TypeInput(TypeTag::U64),
-            bcs: Base64(bcs::to_bytes(&1u64).unwrap()),
-        },
+        TypeInput(TypeTag::U64),
+        Base64(bcs::to_bytes(&1u64).unwrap()),
     )
     .await
     .map_err(upcast)?
