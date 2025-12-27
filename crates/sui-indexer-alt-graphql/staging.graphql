@@ -3952,7 +3952,7 @@ input TransactionFilter {
 """
 Input argument to a Programmable Transaction Block (PTB) command.
 """
-union TransactionInput = Pure | OwnedOrImmutable | SharedInput | Receiving
+union TransactionInput = Pure | MoveValue | OwnedOrImmutable | SharedInput | Receiving
 
 type TransactionInputConnection {
 	"""
