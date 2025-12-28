@@ -117,6 +117,79 @@ impl Epoch {
         .await
     }
 
+    /// The timestamp associated with the last checkpoint in the epoch (or `null` if the epoch has not finished yet).
+    async fn end_timestamp(&self, ctx: &Context<'_>) -> Result<Option<DateTime>, RpcError> {
+        let Some(end) = self.end(ctx).await? else {
+            return Ok(None);
+        };
+
+        Ok(Some(DateTime::from_ms(end.end_timestamp_ms)?))
+    }
+
+    /// The storage fees paid for transactions executed during the epoch (or `null` if the epoch has not finished yet).
+    async fn fund_inflow(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
+        let Some(StoredEpochEnd { storage_charge, .. }) = self.end(ctx).await? else {
+            return Ok(None);
+        };
+
+        Ok(storage_charge.map(BigInt::from))
+    }
+
+    /// The storage fee rebates paid to users who deleted the data associated with past transactions (or `null` if the epoch has not finished yet).
+    async fn fund_outflow(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
+        let Some(StoredEpochEnd { storage_rebate, .. }) = self.end(ctx).await? else {
+            return Ok(None);
+        };
+
+        Ok(storage_rebate.map(BigInt::from))
+    }
+
+    /// The storage fund available in this epoch (or `null` if the epoch has not finished yet).
+    /// This fund is used to redistribute storage fees from past transactions to future validators.
+    async fn fund_size(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
+        let Some(StoredEpochEnd {
+            storage_fund_balance,
+            ..
+        }) = self.end(ctx).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(storage_fund_balance.map(BigInt::from))
+    }
+
+    /// A commitment by the committee at the end of epoch on the contents of the live object set at that time.
+    /// This can be used to verify state snapshots.
+    async fn live_object_set_digest(&self, ctx: &Context<'_>) -> Result<Option<String>, RpcError> {
+        let Some(end) = self.end(ctx).await? else {
+            return Ok(None);
+        };
+
+        let commitments: Vec<CheckpointCommitment> = bcs::from_bytes(&end.epoch_commitments)
+            .context("Failed to deserialize epoch commitments")?;
+
+        for commitment in commitments {
+            if let CheckpointCommitment::ECMHLiveObjectSetDigest(digest) = commitment {
+                return Ok(Some(Base58::encode(digest.digest.into_inner())));
+            }
+        }
+        Ok(None)
+    }
+
+    /// The difference between the fund inflow and outflow, representing the net amount of storage fees accumulated in this epoch (or `null` if the epoch has not finished yet).
+    async fn net_inflow(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
+        let Some(StoredEpochEnd {
+            storage_charge: Some(storage_charge),
+            storage_rebate: Some(storage_rebate),
+            ..
+        }) = self.end(ctx).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(Some(BigInt::from(storage_charge - storage_rebate)))
+    }
+
     /// The epoch's corresponding protocol configuration, including the feature flags and the configuration options.
     async fn protocol_configs(
         &self,
@@ -140,6 +213,17 @@ impl Epoch {
         Ok(Some(BigInt::from(start.reference_gas_price)))
     }
 
+    /// Information about whether this epoch was started in safe mode, which happens if the full epoch change logic fails.
+    async fn safe_mode(&self, ctx: &Context<'_>) -> Result<Option<SafeMode>, RpcError> {
+        let Some(system_state) = self.system_state(ctx).await? else {
+            return Ok(None);
+        };
+
+        let safe_mode = from_system_state(&system_state);
+
+        Ok(Some(safe_mode))
+    }
+
     /// The timestamp associated with the first checkpoint in the epoch.
     async fn start_timestamp(&self, ctx: &Context<'_>) -> Result<Option<DateTime>, RpcError> {
         let Some(contents) = self.start(ctx).await? else {
@@ -147,6 +231,176 @@ impl Epoch {
         };
 
         Ok(Some(DateTime::from_ms(contents.start_timestamp_ms)?))
+    }
+
+    /// SUI set aside to account for objects stored on-chain, at the start of the epoch.
+    /// This is also used for storage rebates.
+    async fn storage_fund(&self, ctx: &Context<'_>) -> Result<Option<StorageFund>, RpcError> {
+        let Some(system_state) = self.system_state(ctx).await? else {
+            return Ok(None);
+        };
+
+        let storage_fund = match system_state {
+            SuiSystemState::V1(inner) => inner.storage_fund.into(),
+            SuiSystemState::V2(inner) => inner.storage_fund.into(),
+            #[cfg(msim)]
+            SuiSystemState::SimTestV1(_)
+            | SuiSystemState::SimTestShallowV2(_)
+            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
+        };
+
+        Ok(Some(storage_fund))
+    }
+
+    /// The system packages used by all transactions in this epoch.
+    async fn system_packages(
+        &self,
+        ctx: &Context<'_>,
+        first: Option<u64>,
+        after: Option<CSysPackage>,
+        last: Option<u64>,
+        before: Option<CSysPackage>,
+    ) -> Result<Option<Connection<String, MovePackage>>, RpcError> {
+        let pagination: &PaginationConfig = ctx.data()?;
+        let limits = pagination.limits("Epoch", "systemPackages");
+        let page = Page::from_params(limits, first, after, last, before)?;
+
+        let Some(contents) = self.start(ctx).await.map_err(upcast)? else {
+            return Ok(None);
+        };
+
+        Ok(Some(
+            MovePackage::paginate_system_packages(
+                ctx,
+                self.scope.clone(),
+                page,
+                contents.cp_lo as u64,
+            )
+            .await?,
+        ))
+    }
+
+    /// Details of the system that are decided during genesis.
+    async fn system_parameters(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Option<SystemParameters>, RpcError> {
+        let Some(system_state) = self.system_state(ctx).await? else {
+            return Ok(None);
+        };
+
+        let system_parameters = match system_state {
+            SuiSystemState::V1(inner) => from_system_parameters_v1(inner.parameters),
+            SuiSystemState::V2(inner) => from_system_parameters_v2(inner.parameters),
+            #[cfg(msim)]
+            SuiSystemState::SimTestV1(_)
+            | SuiSystemState::SimTestShallowV2(_)
+            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
+        };
+
+        Ok(Some(system_parameters))
+    }
+
+    /// Parameters related to the subsidy that supplements staking rewards
+    async fn system_stake_subsidy(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Option<StakeSubsidy>, RpcError> {
+        let Some(system_state) = self.system_state(ctx).await? else {
+            return Ok(None);
+        };
+
+        let stake_subsidy = match system_state {
+            SuiSystemState::V1(inner) => from_stake_subsidy_v1(inner.stake_subsidy),
+            SuiSystemState::V2(inner) => from_stake_subsidy_v1(inner.stake_subsidy),
+            #[cfg(msim)]
+            SuiSystemState::SimTestV1(_)
+            | SuiSystemState::SimTestShallowV2(_)
+            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
+        };
+
+        Ok(Some(stake_subsidy))
+    }
+
+    /// The value of the `version` field of `0x5`, the `0x3::sui::SuiSystemState` object.
+    /// This version changes whenever the fields contained in the system state object (held in a dynamic field attached to `0x5`) change.
+    async fn system_state_version(&self, ctx: &Context<'_>) -> Result<Option<UInt53>, RpcError> {
+        let Some(system_state) = self.system_state(ctx).await? else {
+            return Ok(None);
+        };
+
+        Ok(Some(system_state.system_state_version().into()))
+    }
+
+    /// The total number of checkpoints in this epoch.
+    ///
+    /// Returns `None` when no checkpoint is set in scope (e.g. execution scope).
+    async fn total_checkpoints(&self, ctx: &Context<'_>) -> Result<Option<UInt53>, RpcError> {
+        let (Some(start), end) = try_join!(self.start(ctx), self.end(ctx))? else {
+            return Ok(None);
+        };
+
+        let lo = start.cp_lo as u64;
+        let hi = match end.as_ref() {
+            Some(end) => end.cp_hi as u64,
+            None => {
+                let Some(bound) = self.scope.checkpoint_viewed_at_exclusive_bound() else {
+                    return Ok(None);
+                };
+                bound
+            }
+        };
+
+        Ok(Some(UInt53::from(hi - lo)))
+    }
+
+    /// The total amount of gas fees (in MIST) that were paid in this epoch (or `null` if the epoch has not finished yet).
+    async fn total_gas_fees(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
+        let Some(StoredEpochEnd { total_gas_fees, .. }) = self.end(ctx).await? else {
+            return Ok(None);
+        };
+
+        Ok(total_gas_fees.map(BigInt::from))
+    }
+
+    /// The total MIST rewarded as stake (or `null` if the epoch has not finished yet).
+    async fn total_stake_rewards(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
+        let Some(StoredEpochEnd {
+            total_stake_rewards_distributed,
+            ..
+        }) = self.end(ctx).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(total_stake_rewards_distributed.map(BigInt::from))
+    }
+
+    /// The amount added to total gas fees to make up the total stake rewards (or `null` if the epoch has not finished yet).
+    async fn total_stake_subsidies(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
+        let Some(StoredEpochEnd {
+            stake_subsidy_amount,
+            ..
+        }) = self.end(ctx).await?
+        else {
+            return Ok(None);
+        };
+
+        Ok(stake_subsidy_amount.map(BigInt::from))
+    }
+
+    /// The total number of transaction blocks in this epoch (or `null` if the epoch has not finished yet).
+    async fn total_transactions(&self, ctx: &Context<'_>) -> Result<Option<UInt53>, RpcError> {
+        let (Some(cp_sequence_numbers), Some(end)) =
+            try_join!(self.cp_sequence_numbers(ctx), self.end(ctx))?
+        else {
+            return Ok(None);
+        };
+
+        let lo = cp_sequence_numbers.tx_lo as u64;
+        let hi = end.tx_hi as u64;
+
+        Ok(Some(UInt53::from(hi - lo)))
     }
 
     /// The transactions in this epoch, optionally filtered by transaction filters.
@@ -193,43 +447,6 @@ impl Epoch {
         ))
     }
 
-    /// The system packages used by all transactions in this epoch.
-    async fn system_packages(
-        &self,
-        ctx: &Context<'_>,
-        first: Option<u64>,
-        after: Option<CSysPackage>,
-        last: Option<u64>,
-        before: Option<CSysPackage>,
-    ) -> Result<Option<Connection<String, MovePackage>>, RpcError> {
-        let pagination: &PaginationConfig = ctx.data()?;
-        let limits = pagination.limits("Epoch", "systemPackages");
-        let page = Page::from_params(limits, first, after, last, before)?;
-
-        let Some(contents) = self.start(ctx).await.map_err(upcast)? else {
-            return Ok(None);
-        };
-
-        Ok(Some(
-            MovePackage::paginate_system_packages(
-                ctx,
-                self.scope.clone(),
-                page,
-                contents.cp_lo as u64,
-            )
-            .await?,
-        ))
-    }
-
-    /// The timestamp associated with the last checkpoint in the epoch (or `null` if the epoch has not finished yet).
-    async fn end_timestamp(&self, ctx: &Context<'_>) -> Result<Option<DateTime>, RpcError> {
-        let Some(end) = self.end(ctx).await? else {
-            return Ok(None);
-        };
-
-        Ok(Some(DateTime::from_ms(end.end_timestamp_ms)?))
-    }
-
     /// Validator-related properties, including the active validators.
     async fn validator_set(&self, ctx: &Context<'_>) -> Result<Option<ValidatorSet>, RpcError> {
         let Some(system_state) = self.system_state(ctx).await? else {
@@ -252,223 +469,6 @@ impl Epoch {
         );
 
         Ok(Some(validator_set))
-    }
-
-    /// The total number of checkpoints in this epoch.
-    ///
-    /// Returns `None` when no checkpoint is set in scope (e.g. execution scope).
-    async fn total_checkpoints(&self, ctx: &Context<'_>) -> Result<Option<UInt53>, RpcError> {
-        let (Some(start), end) = try_join!(self.start(ctx), self.end(ctx))? else {
-            return Ok(None);
-        };
-
-        let lo = start.cp_lo as u64;
-        let hi = match end.as_ref() {
-            Some(end) => end.cp_hi as u64,
-            None => {
-                let Some(bound) = self.scope.checkpoint_viewed_at_exclusive_bound() else {
-                    return Ok(None);
-                };
-                bound
-            }
-        };
-
-        Ok(Some(UInt53::from(hi - lo)))
-    }
-
-    /// The total number of transaction blocks in this epoch (or `null` if the epoch has not finished yet).
-    async fn total_transactions(&self, ctx: &Context<'_>) -> Result<Option<UInt53>, RpcError> {
-        let (Some(cp_sequence_numbers), Some(end)) =
-            try_join!(self.cp_sequence_numbers(ctx), self.end(ctx))?
-        else {
-            return Ok(None);
-        };
-
-        let lo = cp_sequence_numbers.tx_lo as u64;
-        let hi = end.tx_hi as u64;
-
-        Ok(Some(UInt53::from(hi - lo)))
-    }
-
-    /// The total amount of gas fees (in MIST) that were paid in this epoch (or `null` if the epoch has not finished yet).
-    async fn total_gas_fees(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
-        let Some(StoredEpochEnd { total_gas_fees, .. }) = self.end(ctx).await? else {
-            return Ok(None);
-        };
-
-        Ok(total_gas_fees.map(BigInt::from))
-    }
-
-    /// The total MIST rewarded as stake (or `null` if the epoch has not finished yet).
-    async fn total_stake_rewards(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
-        let Some(StoredEpochEnd {
-            total_stake_rewards_distributed,
-            ..
-        }) = self.end(ctx).await?
-        else {
-            return Ok(None);
-        };
-
-        Ok(total_stake_rewards_distributed.map(BigInt::from))
-    }
-
-    /// The amount added to total gas fees to make up the total stake rewards (or `null` if the epoch has not finished yet).
-    async fn total_stake_subsidies(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
-        let Some(StoredEpochEnd {
-            stake_subsidy_amount,
-            ..
-        }) = self.end(ctx).await?
-        else {
-            return Ok(None);
-        };
-
-        Ok(stake_subsidy_amount.map(BigInt::from))
-    }
-
-    /// The storage fund available in this epoch (or `null` if the epoch has not finished yet).
-    /// This fund is used to redistribute storage fees from past transactions to future validators.
-    async fn fund_size(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
-        let Some(StoredEpochEnd {
-            storage_fund_balance,
-            ..
-        }) = self.end(ctx).await?
-        else {
-            return Ok(None);
-        };
-
-        Ok(storage_fund_balance.map(BigInt::from))
-    }
-
-    /// The difference between the fund inflow and outflow, representing the net amount of storage fees accumulated in this epoch (or `null` if the epoch has not finished yet).
-    async fn net_inflow(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
-        let Some(StoredEpochEnd {
-            storage_charge: Some(storage_charge),
-            storage_rebate: Some(storage_rebate),
-            ..
-        }) = self.end(ctx).await?
-        else {
-            return Ok(None);
-        };
-
-        Ok(Some(BigInt::from(storage_charge - storage_rebate)))
-    }
-
-    /// The storage fees paid for transactions executed during the epoch (or `null` if the epoch has not finished yet).
-    async fn fund_inflow(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
-        let Some(StoredEpochEnd { storage_charge, .. }) = self.end(ctx).await? else {
-            return Ok(None);
-        };
-
-        Ok(storage_charge.map(BigInt::from))
-    }
-
-    /// The storage fee rebates paid to users who deleted the data associated with past transactions (or `null` if the epoch has not finished yet).
-    async fn fund_outflow(&self, ctx: &Context<'_>) -> Result<Option<BigInt>, RpcError> {
-        let Some(StoredEpochEnd { storage_rebate, .. }) = self.end(ctx).await? else {
-            return Ok(None);
-        };
-
-        Ok(storage_rebate.map(BigInt::from))
-    }
-
-    /// SUI set aside to account for objects stored on-chain, at the start of the epoch.
-    /// This is also used for storage rebates.
-    async fn storage_fund(&self, ctx: &Context<'_>) -> Result<Option<StorageFund>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let storage_fund = match system_state {
-            SuiSystemState::V1(inner) => inner.storage_fund.into(),
-            SuiSystemState::V2(inner) => inner.storage_fund.into(),
-            #[cfg(msim)]
-            SuiSystemState::SimTestV1(_)
-            | SuiSystemState::SimTestShallowV2(_)
-            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
-        };
-
-        Ok(Some(storage_fund))
-    }
-
-    /// Information about whether this epoch was started in safe mode, which happens if the full epoch change logic fails.
-    async fn safe_mode(&self, ctx: &Context<'_>) -> Result<Option<SafeMode>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let safe_mode = from_system_state(&system_state);
-
-        Ok(Some(safe_mode))
-    }
-
-    /// The value of the `version` field of `0x5`, the `0x3::sui::SuiSystemState` object.
-    /// This version changes whenever the fields contained in the system state object (held in a dynamic field attached to `0x5`) change.
-    async fn system_state_version(&self, ctx: &Context<'_>) -> Result<Option<UInt53>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        Ok(Some(system_state.system_state_version().into()))
-    }
-
-    /// Details of the system that are decided during genesis.
-    async fn system_parameters(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<SystemParameters>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let system_parameters = match system_state {
-            SuiSystemState::V1(inner) => from_system_parameters_v1(inner.parameters),
-            SuiSystemState::V2(inner) => from_system_parameters_v2(inner.parameters),
-            #[cfg(msim)]
-            SuiSystemState::SimTestV1(_)
-            | SuiSystemState::SimTestShallowV2(_)
-            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
-        };
-
-        Ok(Some(system_parameters))
-    }
-
-    /// Parameters related to the subsidy that supplements staking rewards
-    async fn system_stake_subsidy(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<StakeSubsidy>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let stake_subsidy = match system_state {
-            SuiSystemState::V1(inner) => from_stake_subsidy_v1(inner.stake_subsidy),
-            SuiSystemState::V2(inner) => from_stake_subsidy_v1(inner.stake_subsidy),
-            #[cfg(msim)]
-            SuiSystemState::SimTestV1(_)
-            | SuiSystemState::SimTestShallowV2(_)
-            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
-        };
-
-        Ok(Some(stake_subsidy))
-    }
-
-    /// A commitment by the committee at the end of epoch on the contents of the live object set at that time.
-    /// This can be used to verify state snapshots.
-    async fn live_object_set_digest(&self, ctx: &Context<'_>) -> Result<Option<String>, RpcError> {
-        let Some(end) = self.end(ctx).await? else {
-            return Ok(None);
-        };
-
-        let commitments: Vec<CheckpointCommitment> = bcs::from_bytes(&end.epoch_commitments)
-            .context("Failed to deserialize epoch commitments")?;
-
-        for commitment in commitments {
-            if let CheckpointCommitment::ECMHLiveObjectSetDigest(digest) = commitment {
-                return Ok(Some(Base58::encode(digest.digest.into_inner())));
-            }
-        }
-        Ok(None)
     }
 }
 
