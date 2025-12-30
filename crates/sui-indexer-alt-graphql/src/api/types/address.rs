@@ -13,7 +13,7 @@ use crate::{
         scalars::{
             owner_kind::OwnerKind, sui_address::SuiAddress, type_filter::TypeInput, uint53::UInt53,
         },
-        types::{dynamic_field, validator::Validator},
+        types::dynamic_field,
     },
     error::RpcError,
     pagination::{Page, PaginationConfig},
@@ -102,7 +102,6 @@ pub(crate) enum IAddressable {
     MoveObject(MoveObject),
     MovePackage(MovePackage),
     Object(Object),
-    Validator(Validator),
 }
 
 #[derive(Clone, Debug)]

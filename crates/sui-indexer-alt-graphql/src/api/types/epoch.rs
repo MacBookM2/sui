@@ -7,6 +7,7 @@ use anyhow::Context as _;
 use async_graphql::{Context, Object, connection::Connection, dataloader::DataLoader};
 use fastcrypto::encoding::{Base58, Encoding};
 use futures::try_join;
+use move_core_types::language_storage::StructTag;
 use sui_indexer_alt_reader::cp_sequence_numbers::CpSequenceNumberKey;
 use sui_indexer_alt_reader::{
     epochs::{CheckpointBoundedEpochStartKey, EpochEndKey, EpochStartKey},
@@ -14,21 +15,19 @@ use sui_indexer_alt_reader::{
 };
 use sui_indexer_alt_schema::cp_sequence_numbers::StoredCpSequenceNumbers;
 use sui_indexer_alt_schema::epochs::{StoredEpochEnd, StoredEpochStart};
-use sui_types::SUI_DENY_LIST_OBJECT_ID;
 use sui_types::messages_checkpoint::CheckpointCommitment;
-use sui_types::sui_system_state::SuiSystemState;
-use sui_types::sui_system_state::SuiSystemStateTrait;
+use sui_types::sui_system_state::{
+    SUI_SYSTEM_STATE_INNER_MODULE_NAME, SUI_SYSTEM_STATE_INNER_V1_STRUCT_NAME,
+    SUI_SYSTEM_STATE_INNER_V2_STRUCT_NAME,
+};
+use sui_types::{SUI_DENY_LIST_OBJECT_ID, SUI_SYSTEM_ADDRESS, TypeTag};
 use tokio::sync::OnceCell;
 
 use crate::api::scalars::cursor::JsonCursor;
+use crate::api::types::move_type::MoveType;
+use crate::api::types::move_value::MoveValue;
 use crate::{
     api::scalars::{big_int::BigInt, date_time::DateTime, uint53::UInt53},
-    api::types::safe_mode::{SafeMode, from_system_state},
-    api::types::stake_subsidy::{StakeSubsidy, from_stake_subsidy_v1},
-    api::types::storage_fund::StorageFund,
-    api::types::system_parameters::{
-        SystemParameters, from_system_parameters_v1, from_system_parameters_v2,
-    },
     api::types::validator_set::ValidatorSet,
     error::RpcError,
     error::upcast,
@@ -213,17 +212,6 @@ impl Epoch {
         Ok(Some(BigInt::from(start.reference_gas_price)))
     }
 
-    /// Information about whether this epoch was started in safe mode, which happens if the full epoch change logic fails.
-    async fn safe_mode(&self, ctx: &Context<'_>) -> Result<Option<SafeMode>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let safe_mode = from_system_state(&system_state);
-
-        Ok(Some(safe_mode))
-    }
-
     /// The timestamp associated with the first checkpoint in the epoch.
     async fn start_timestamp(&self, ctx: &Context<'_>) -> Result<Option<DateTime>, RpcError> {
         let Some(contents) = self.start(ctx).await? else {
@@ -231,25 +219,6 @@ impl Epoch {
         };
 
         Ok(Some(DateTime::from_ms(contents.start_timestamp_ms)?))
-    }
-
-    /// SUI set aside to account for objects stored on-chain, at the start of the epoch.
-    /// This is also used for storage rebates.
-    async fn storage_fund(&self, ctx: &Context<'_>) -> Result<Option<StorageFund>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let storage_fund = match system_state {
-            SuiSystemState::V1(inner) => inner.storage_fund.into(),
-            SuiSystemState::V2(inner) => inner.storage_fund.into(),
-            #[cfg(msim)]
-            SuiSystemState::SimTestV1(_)
-            | SuiSystemState::SimTestShallowV2(_)
-            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
-        };
-
-        Ok(Some(storage_fund))
     }
 
     /// The system packages used by all transactions in this epoch.
@@ -280,56 +249,9 @@ impl Epoch {
         ))
     }
 
-    /// Details of the system that are decided during genesis.
-    async fn system_parameters(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<SystemParameters>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let system_parameters = match system_state {
-            SuiSystemState::V1(inner) => from_system_parameters_v1(inner.parameters),
-            SuiSystemState::V2(inner) => from_system_parameters_v2(inner.parameters),
-            #[cfg(msim)]
-            SuiSystemState::SimTestV1(_)
-            | SuiSystemState::SimTestShallowV2(_)
-            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
-        };
-
-        Ok(Some(system_parameters))
-    }
-
-    /// Parameters related to the subsidy that supplements staking rewards
-    async fn system_stake_subsidy(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<StakeSubsidy>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        let stake_subsidy = match system_state {
-            SuiSystemState::V1(inner) => from_stake_subsidy_v1(inner.stake_subsidy),
-            SuiSystemState::V2(inner) => from_stake_subsidy_v1(inner.stake_subsidy),
-            #[cfg(msim)]
-            SuiSystemState::SimTestV1(_)
-            | SuiSystemState::SimTestShallowV2(_)
-            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
-        };
-
-        Ok(Some(stake_subsidy))
-    }
-
-    /// The value of the `version` field of `0x5`, the `0x3::sui::SuiSystemState` object.
-    /// This version changes whenever the fields contained in the system state object (held in a dynamic field attached to `0x5`) change.
-    async fn system_state_version(&self, ctx: &Context<'_>) -> Result<Option<UInt53>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
-            return Ok(None);
-        };
-
-        Ok(Some(system_state.system_state_version().into()))
+    /// The contents of the system state inner object at the start of this epoch.
+    async fn system_state(&self, ctx: &Context<'_>) -> Result<Option<MoveValue>, RpcError> {
+        self.system_state_impl(ctx).await
     }
 
     /// The total number of checkpoints in this epoch.
@@ -449,24 +371,19 @@ impl Epoch {
 
     /// Validator-related properties, including the active validators.
     async fn validator_set(&self, ctx: &Context<'_>) -> Result<Option<ValidatorSet>, RpcError> {
-        let Some(system_state) = self.system_state(ctx).await? else {
+        let Some(system_state) = self.system_state_impl(ctx).await? else {
             return Ok(None);
         };
 
-        let (validator_set_v1, report_records) = match system_state {
-            SuiSystemState::V1(inner) => (inner.validators, inner.validator_report_records),
-            SuiSystemState::V2(inner) => (inner.validators, inner.validator_report_records),
-            #[cfg(msim)]
-            SuiSystemState::SimTestV1(_)
-            | SuiSystemState::SimTestShallowV2(_)
-            | SuiSystemState::SimTestDeepV2(_) => return Ok(None),
+        let Some(layout) = system_state.type_.layout_impl().await? else {
+            return Ok(None);
         };
 
-        let validator_set = ValidatorSet::from_validator_set_v1(
-            self.scope.clone(),
-            validator_set_v1,
-            report_records,
-        );
+        let validator_set = ValidatorSet::from_system_state(
+            system_state.type_.scope,
+            &system_state.native,
+            &layout,
+        )?;
 
         Ok(Some(validator_set))
     }
@@ -566,17 +483,6 @@ impl Epoch {
             .await
     }
 
-    async fn system_state(&self, ctx: &Context<'_>) -> Result<Option<SuiSystemState>, RpcError> {
-        let Some(start) = self.start(ctx).await? else {
-            return Ok(None);
-        };
-
-        let system_state = bcs::from_bytes::<SuiSystemState>(&start.system_state)
-            .context("Failed to deserialize system state")?;
-
-        Ok(Some(system_state))
-    }
-
     /// Attempt to fetch information about the end of an epoch from the store. May return an empty
     /// response if the epoch has not ended yet, as of the checkpoint being viewed, or when
     /// no checkpoint is set in scope (e.g. execution scope).
@@ -619,5 +525,42 @@ impl Epoch {
                 Ok(stored)
             })
             .await
+    }
+
+    /// The contents of the system state inner object at the start of this epoch.
+    async fn system_state_impl(&self, ctx: &Context<'_>) -> Result<Option<MoveValue>, RpcError> {
+        let Some(start) = self.start(ctx).await? else {
+            return Ok(None);
+        };
+
+        // Queries nested under Move objects are scoped by that object's root version. We cannot do
+        // the same thing for the system state object because we don't know its root version, so we
+        // choose to scope by checkpoint instead.
+        //
+        // TODO: allow setting checkpoint viewed at in the future relative to the scoped
+        // checkpoint, but still bounded by the service watermark.
+        let Some(scope) = self.scope.with_checkpoint_viewed_at(start.cp_lo as u64) else {
+            return Ok(None);
+        };
+
+        let struct_name = match start.system_state.first() {
+            Some(0) => SUI_SYSTEM_STATE_INNER_V1_STRUCT_NAME,
+            Some(1) => SUI_SYSTEM_STATE_INNER_V2_STRUCT_NAME,
+            _ => {
+                return Ok(None);
+            }
+        };
+
+        let tag = TypeTag::Struct(Box::new(StructTag {
+            address: SUI_SYSTEM_ADDRESS,
+            module: SUI_SYSTEM_STATE_INNER_MODULE_NAME.to_owned(),
+            name: struct_name.to_owned(),
+            type_params: vec![],
+        }));
+
+        let type_ = MoveType::from_native(tag, scope);
+        let native = start.system_state[1..].to_owned();
+
+        Ok(Some(MoveValue { type_, native }))
     }
 }
