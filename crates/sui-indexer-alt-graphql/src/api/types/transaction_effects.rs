@@ -23,7 +23,8 @@ use sui_types::{
 
 use crate::{
     api::scalars::{
-        base64::Base64, cursor::JsonCursor, date_time::DateTime, digest::Digest, uint53::UInt53,
+        base64::Base64, cursor::JsonCursor, date_time::DateTime, digest::Digest, json::Json,
+        uint53::UInt53,
     },
     error::RpcError,
     pagination::{Page, PaginationConfig},
@@ -268,6 +269,18 @@ impl EffectsContents {
     async fn effects_bcs(&self) -> Option<Result<Base64, RpcError>> {
         let content = self.contents.as_ref()?;
         Some(content.raw_effects().map(Base64).map_err(RpcError::from))
+    }
+
+    /// The effects as a JSON blob, matching the gRPC proto format.
+    async fn effects_json(&self) -> Result<Option<Json>, RpcError> {
+        let Some(content) = &self.contents else {
+            return Ok(None);
+        };
+
+        let proto_effects = content.proto_effects()?;
+        let json_value =
+            serde_json::to_value(&proto_effects).context("Failed to serialize effects to JSON")?;
+        Ok(Some(json_value.try_into()?))
     }
 
     /// A 32-byte hash that uniquely identifies the effects contents, encoded in Base58.
