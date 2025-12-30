@@ -3,7 +3,7 @@
 
 use std::sync::Arc;
 
-use anyhow::{Context, bail};
+use anyhow::{Context as _, bail};
 use async_graphql::dataloader::DataLoader;
 use diesel::deserialize::FromSqlRow;
 use diesel::expression::QueryMetadata;
@@ -14,7 +14,7 @@ use diesel::query_dsl::methods::LimitDsl;
 use diesel_async::RunQueryDsl;
 use prometheus::Registry;
 use sui_indexer_alt_metrics::db::DbConnectionStatsCollector;
-use tracing::{debug, warn};
+use tracing::debug;
 use url::Url;
 
 use crate::metrics::DbReaderMetrics;
@@ -107,24 +107,28 @@ impl Connection<'_> {
         ST: 'static,
     {
         let query = query.limit(1);
-        let query_debug = diesel::debug_query(&query).to_string();
-        debug!("{query_debug}");
 
         self.metrics.requests_received.inc();
         let _guard = self.metrics.latency.start_timer();
 
-        let res = query.get_result(&mut self.conn).await;
-        if res.as_ref().is_err_and(is_timeout) {
-            warn!(query = query_debug, "Query timed out");
+        let id = self.conn.id;
+        let query_debug = diesel::debug_query(&query).to_string();
+        match query.get_result(&mut self.conn).await {
+            Ok(results) => {
+                self.metrics.requests_succeeded.inc();
+                debug!(id, "{query_debug}");
+                Ok(results)
+            }
+            Err(err) => {
+                self.metrics.requests_failed.inc();
+                let message = if is_timeout(&err) {
+                    format!("First query timed out id={id} query=[{query_debug}]")
+                } else {
+                    format!("First query error id={id} query=[{query_debug}]")
+                };
+                Err(err).context(message)
+            }
         }
-
-        if res.is_ok() {
-            self.metrics.requests_succeeded.inc();
-        } else {
-            self.metrics.requests_failed.inc();
-        }
-
-        Ok(res?)
     }
 
     pub async fn results<'q, Q, ST, U>(&mut self, query: Q) -> anyhow::Result<Vec<U>>
@@ -135,24 +139,27 @@ impl Connection<'_> {
         Pg: QueryMetadata<Q::SqlType>,
         ST: 'static,
     {
-        let query_debug = diesel::debug_query(&query).to_string();
-        debug!("{query_debug}");
-
         self.metrics.requests_received.inc();
         let _guard = self.metrics.latency.start_timer();
 
-        let res = query.get_results(&mut self.conn).await;
-        if res.as_ref().is_err_and(is_timeout) {
-            warn!(query = query_debug, "Query timed out");
+        let id = self.conn.id;
+        let query_debug = diesel::debug_query(&query).to_string();
+        match query.get_results(&mut self.conn).await {
+            Ok(results) => {
+                self.metrics.requests_succeeded.inc();
+                debug!(id, "{query_debug}");
+                Ok(results)
+            }
+            Err(err) => {
+                self.metrics.requests_failed.inc();
+                let message = if is_timeout(&err) {
+                    format!("Results query timed out id={id} query=[{query_debug}]")
+                } else {
+                    format!("Results query error id={id} query=[{query_debug}]")
+                };
+                Err(err).context(message)
+            }
         }
-
-        if res.is_ok() {
-            self.metrics.requests_succeeded.inc();
-        } else {
-            self.metrics.requests_failed.inc();
-        }
-
-        Ok(res?)
     }
 }
 

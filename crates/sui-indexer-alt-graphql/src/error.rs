@@ -213,7 +213,7 @@ pub(crate) fn fill_error_code(ext: &mut Option<ErrorExtensionValues>, code: &str
 
 /// Get a list of error codes from a GraphQL response. We use these to figure out whether we should
 /// log the query at the `debug` or `info` level.
-pub(crate) fn error_codes(response: &Response) -> Vec<&str> {
+pub(crate) fn error_codes(response: &Response) -> Vec<String> {
     response
         .errors
         .iter()
@@ -221,7 +221,7 @@ pub(crate) fn error_codes(response: &Response) -> Vec<&str> {
         .flat_map(|ext| ext.get("code"))
         .filter_map(|code| {
             if let Value::String(code) = code {
-                Some(code.as_str())
+                Some(code.clone())
             } else {
                 None
             }

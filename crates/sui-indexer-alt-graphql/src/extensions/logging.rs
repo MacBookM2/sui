@@ -17,11 +17,13 @@ use async_graphql::{
     },
     parser::types::ExecutableDocument,
 };
+use async_graphql_value::ConstValue;
 use axum::http::HeaderName;
 use pin_project::{pin_project, pinned_drop};
 use prometheus::HistogramTimer;
 use serde_json::json;
-use tracing::{debug, info, warn};
+use tracing::log::Level;
+use tracing::{debug, info, log, warn};
 use uuid::Uuid;
 
 use crate::{
@@ -161,6 +163,7 @@ impl Extension for LoggingExt {
         self.metrics.fields_received.with_label_values(labels).inc();
 
         let result = next.run(ctx, info).await;
+
         if result.is_ok() {
             self.metrics.fields_succeeded.with_label_values(labels)
         } else {
@@ -198,19 +201,35 @@ where
         resp.http_headers.insert(REQUEST_ID_HEADER, request_id);
 
         if resp.is_ok() {
-            info!(%uuid, %addr, elapsed_ms, "Request succeeded");
+            if log::log_enabled!(Level::Debug) {
+                debug!(%uuid, %addr, elapsed_ms, query = ext.query.get().unwrap(), response = %json!(resp), "Request succeeded");
+            } else {
+                info!(%uuid, %addr, elapsed_ms, "Request succeeded");
+            }
             ext.metrics.queries_succeeded.inc();
         } else {
             let codes = error_codes(&resp);
 
             // Log internal errors, timeouts, and unknown errors at a higher log level than other errors.
             if is_loud_query(&codes) {
-                warn!(%uuid, %addr, query = ext.query.get().unwrap(), "Query");
+                warn!(%uuid, %addr, elapsed_ms, query = ext.query.get().unwrap(), response = %json!(resp), "Request failed");
+            } else if log::log_enabled!(Level::Debug) {
+                debug!(%uuid, %addr, elapsed_ms, query = ext.query.get().unwrap(), response = %json!(resp), "Request failed");
             } else {
-                debug!(%uuid, %addr, query = ext.query.get().unwrap(), "Query");
+                info!(%uuid, %addr, elapsed_ms, ?codes, "Request failed");
             }
 
-            info!(%uuid, %addr, elapsed_ms, ?codes, "Request failed");
+            // do not return the chain for INTERNAL_SERVER_ERROR
+            resp.errors.iter_mut().for_each(|e| {
+                if let Some(extensions) = e.extensions.as_mut()
+                    && let Some(const_value) = extensions.get("code")
+                    && let ConstValue::String(code) = const_value
+                    && code == code::INTERNAL_SERVER_ERROR
+                    && extensions.get("chain").is_some()
+                {
+                    extensions.unset("chain")
+                };
+            });
 
             if codes.is_empty() {
                 ext.metrics
@@ -224,7 +243,6 @@ where
             }
         }
 
-        debug!(%uuid, %addr, response = %json!(resp), "Response");
         Poll::Ready(resp)
     }
 }
@@ -233,20 +251,24 @@ where
 impl<F> PinnedDrop for MetricsFuture<F> {
     fn drop(self: Pin<&mut Self>) {
         if let Some(RequestMetrics { timer, ext }) = self.project().metrics.take() {
+            let Session { uuid, addr } = ext.session.get().unwrap();
             let elapsed_ms = timer.stop_and_record() * 1000.0;
             ext.metrics.queries_cancelled.inc();
-            info!(elapsed_ms, "Request cancelled");
+            info!(%uuid, %addr, elapsed_ms, "Request cancelled");
         }
     }
 }
 
 /// Whether the query should be logged at a "louder" level (e.g. `warn!` instead of `debug!`),
 /// because it's related to some problem that we should probably investigate.
-fn is_loud_query(codes: &[&str]) -> bool {
+fn is_loud_query(codes: &[String]) -> bool {
     codes.is_empty()
-        || codes
-            .iter()
-            .any(|c| matches!(*c, code::REQUEST_TIMEOUT | code::INTERNAL_SERVER_ERROR))
+        || codes.iter().any(|c| {
+            matches!(
+                c.as_str(),
+                code::REQUEST_TIMEOUT | code::INTERNAL_SERVER_ERROR
+            )
+        })
 }
 
 #[cfg(test)]

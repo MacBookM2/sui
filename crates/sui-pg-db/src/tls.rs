@@ -1,25 +1,53 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
-use std::path::PathBuf;
-use std::sync::Arc;
-
 use anyhow::Context;
-use diesel::{ConnectionError, ConnectionResult};
-use diesel_async::AsyncPgConnection;
+use diesel::{ConnectionError, ConnectionResult, QueryableByName, sql_types::Integer};
+use diesel_async::{AsyncPgConnection, pooled_connection::PoolableConnection};
 use rustls::{
     ClientConfig, DigitallySignedStruct, RootCertStore,
     client::danger::{HandshakeSignatureValid, ServerCertVerified, ServerCertVerifier},
     pki_types::{CertificateDer, ServerName, UnixTime},
 };
+use std::sync::OnceLock;
+use std::{
+    ops::{Deref, DerefMut},
+    path::PathBuf,
+    sync::Arc,
+};
 use tokio_postgres_rustls::MakeRustlsConnect;
-use tracing::error;
+use tracing::{error, info};
 use webpki_roots::TLS_SERVER_ROOTS;
 
 /// A custom verifier that skips all server certificate verification. This mirrors libpq default
 /// behavior of not doing any server verification.
 #[derive(Debug)]
 pub(crate) struct SkipServerCertCheck;
+
+pub struct AsyncPgConnectionWithId {
+    pub id: i32,
+    pub conn: AsyncPgConnection,
+}
+
+impl Deref for AsyncPgConnectionWithId {
+    type Target = AsyncPgConnection;
+
+    fn deref(&self) -> &Self::Target {
+        &self.conn
+    }
+}
+
+impl DerefMut for AsyncPgConnectionWithId {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.conn
+    }
+}
+
+impl PoolableConnection for AsyncPgConnectionWithId {
+    fn is_broken(&mut self) -> bool {
+        self.conn.is_broken()
+    }
+}
 
 /// Implement the `ServerCertVerifier` trait for `SkipServerCertCheck` to always return valid. This
 /// skips all server certificate verification.
@@ -72,25 +100,61 @@ impl ServerCertVerifier for SkipServerCertCheck {
 pub(crate) async fn establish_tls_connection(
     database_url: &str,
     tls_config: ClientConfig,
-) -> ConnectionResult<AsyncPgConnection> {
+) -> ConnectionResult<AsyncPgConnectionWithId> {
     let tls = MakeRustlsConnect::new(tls_config);
-    let (client, conn) = tokio_postgres::connect(database_url, tls)
+    let (client, tokio_conn) = tokio_postgres::connect(database_url, tls)
         .await
         .map_err(|e| ConnectionError::BadConnection(e.to_string()))?;
 
-    // The `conn` object performs actual IO with the database, and tokio-postgres suggests spawning
-    // it off to run in the background. This will resolve only when the connection is closed, either
-    // because of a fatal error or because its associated Client has dropped and all outstanding
-    // work has completed.
+    let shared_pid = Arc::new(OnceLock::<i32>::new());
+    let shared_pid_clone = shared_pid.clone();
+    // must happen before AsyncPgConnection::try_from to avoid deadlock
     tokio::spawn(async move {
-        if let Err(e) = conn.await {
-            error!("Database connection terminated: {e}");
+        let get_pid = || {
+            shared_pid_clone
+                .get()
+                .map_or("unset".to_string(), |p| p.to_string())
+        };
+        // The `tokio_conn` object performs actual IO with the database, and tokio-postgres suggests spawning
+        // it off to run in the background. This will resolve only when the connection is closed, either
+        // because of a fatal error or because its associated Client has dropped and all outstanding
+        // work has completed.
+        if let Err(e) = tokio_conn.await {
+            error!(
+                pid = %get_pid(),
+                "Database connection terminated with error: {e}"
+            );
+        } else {
+            info!(
+                pid = %get_pid(),
+                "Database connection terminated without error"
+            );
         }
     });
 
     // Users interact with the database through the client object. We convert it into an
     // AsyncPgConnection so it can be compatible with diesel.
-    AsyncPgConnection::try_from(client).await
+    let mut conn = AsyncPgConnection::try_from(client).await?;
+
+    #[derive(QueryableByName)]
+    struct Pid {
+        #[diesel(sql_type = Integer)]
+        pid: i32,
+    }
+
+    let Pid { pid } = {
+        use diesel_async::RunQueryDsl;
+        diesel::sql_query("SELECT pg_backend_pid() AS pid")
+            .get_result(&mut conn)
+            .await
+            .map_err(ConnectionError::CouldntSetupConfiguration)?
+    };
+
+    info!(pid, "Database connection established");
+
+    shared_pid.set(pid).expect("error setting pid");
+
+    Ok(AsyncPgConnectionWithId { conn, id: pid })
 }
 
 /// Builds a TLS configuration from the provided DbArgs. If tls_verify_cert is false, disable server
