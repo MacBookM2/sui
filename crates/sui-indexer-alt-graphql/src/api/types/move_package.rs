@@ -38,7 +38,7 @@ use crate::{
             type_filter::TypeInput,
             uint53::UInt53,
         },
-        types::address::Address,
+        types::address::{self, Address},
     },
     error::{RpcError, bad_user_input, upcast},
     pagination::{Page, PaginationConfig},
@@ -71,7 +71,7 @@ pub(crate) struct MovePackage {
 
 /// Identifies a specific version of a package.
 ///
-/// The `address` field must be specified, as well as at most one of `version`, or `atCheckpoint`. If neither is provided, the package is fetched at the current checkpoint.
+/// The `address` field must be specified, as well as at most one of `version`, or `atCheckpoint`. If neither is provided, the package is fetched at the checkpoint being viewed.
 ///
 /// See `Query.package` for more details.
 #[derive(InputObject, Debug, Clone, Eq, PartialEq)]
@@ -133,13 +133,16 @@ impl MovePackage {
         self.super_.address(ctx).await
     }
 
-    /// Fetch the address as it was at a different checkpoint. Defaults to the latest checkpoint.
+    /// Fetch the address as it was at a different root version, or checkpoint.
+    ///
+    /// If no additional bound is provided, the address is fetched at the latest checkpoint known to the RPC.
     pub(crate) async fn address_at(
         &self,
         ctx: &Context<'_>,
+        root_version: Option<UInt53>,
         checkpoint: Option<UInt53>,
-    ) -> Result<Option<Address>, RpcError> {
-        self.super_.address_at(ctx, checkpoint).await
+    ) -> Result<Option<Address>, RpcError<address::Error>> {
+        self.super_.address_at(ctx, root_version, checkpoint).await
     }
 
     /// The version of this package that this content comes from.
@@ -357,9 +360,9 @@ impl MovePackage {
         self.super_.owner(ctx).await.ok()?
     }
 
-    /// Fetch the package with the same original ID, at a different version, root version bound, or checkpoint.
+    /// Fetch the package with the same original ID, at a different version, or checkpoint.
     ///
-    /// If no additional bound is provided, the latest version of this package is fetched at the latest checkpoint.
+    /// If no additional bound is provided, the package is fetched at the latest checkpoint known to the RPC.
     async fn package_at(
         &self,
         ctx: &Context<'_>,
@@ -368,7 +371,7 @@ impl MovePackage {
     ) -> Result<Option<MovePackage>, RpcError<Error>> {
         MovePackage::by_key(
             ctx,
-            self.super_.super_.scope.clone(),
+            Scope::new(ctx)?,
             PackageKey {
                 address: self.super_.super_.address.into(),
                 version,
@@ -602,7 +605,7 @@ impl MovePackage {
                 .map_err(upcast)
         } else if let Some(cp) = key.at_checkpoint {
             let scope = scope
-                .with_checkpoint_viewed_at(cp.into())
+                .with_checkpoint_viewed_at(ctx, cp.into())
                 .ok_or_else(|| bad_user_input(Error::Future(cp.into())))?;
 
             Self::checkpoint_bounded(ctx, scope, key.address, cp)

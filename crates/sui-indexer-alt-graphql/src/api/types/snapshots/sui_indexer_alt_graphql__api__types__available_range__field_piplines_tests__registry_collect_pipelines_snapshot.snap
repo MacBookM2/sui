@@ -1262,6 +1262,9 @@ Query.events
 Query.events (filter: module)
   => {"ev_emit_mod", "tx_digests"}
 
+Query.multiGetAddresses
+  => {}
+
 Query.multiGetCheckpoints
   => {}
 

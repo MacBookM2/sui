@@ -29,7 +29,7 @@ use crate::{
             type_filter::{TypeFilter, TypeInput},
             uint53::UInt53,
         },
-        types::address::Address,
+        types::address::{self, Address},
     },
     config::Limits,
     error::{RpcError, bad_user_input, upcast},
@@ -129,13 +129,16 @@ impl DynamicField {
         self.super_.address(ctx).await
     }
 
-    /// Fetch the address as it was at a different checkpoint. Defaults to the latest checkpoint.
+    /// Fetch the address as it was at a different root version, or checkpoint.
+    ///
+    /// If no additional bound is provided, the address is fetched at the latest checkpoint known to the RPC.
     pub(crate) async fn address_at(
         &self,
         ctx: &Context<'_>,
+        root_version: Option<UInt53>,
         checkpoint: Option<UInt53>,
-    ) -> Result<Option<Address>, RpcError> {
-        self.super_.address_at(ctx, checkpoint).await
+    ) -> Result<Option<Address>, RpcError<address::Error>> {
+        self.super_.address_at(ctx, root_version, checkpoint).await
     }
 
     /// The version of this object that this content comes from.
@@ -460,11 +463,9 @@ impl DynamicField {
                 type_: Some(type_),
                 bcs: Some(bcs),
                 literal: None,
-            } => {
-                Self::by_serialized_name(ctx, scope, parent, kind, type_, bcs)
-                    .await
-                    .map_err(upcast)
-            }
+            } => Self::by_serialized_name(ctx, scope, parent, kind, type_, bcs)
+                .await
+                .map_err(upcast),
 
             DynamicFieldName {
                 literal: Some(literal),
@@ -649,4 +650,3 @@ impl DynamicField {
             .await
     }
 }
-
