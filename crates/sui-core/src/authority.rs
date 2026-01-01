@@ -5,6 +5,9 @@
 use crate::accumulators::coin_reservations::CoinReservationResolver;
 use crate::accumulators::funds_read::AccountFundsRead;
 use crate::accumulators::{self, AccumulatorSettlementTxBuilder};
+use crate::cache_update_handler::pool_related_object_ids;
+use crate::cache_update_handler::CacheUpdateHandler;
+use crate::tx_handler::TxHandler;
 use crate::checkpoints::CheckpointBuilderError;
 use crate::checkpoints::CheckpointBuilderResult;
 use crate::congestion_tracker::CongestionTracker;
@@ -23,6 +26,7 @@ use crate::transaction_outputs::TransactionOutputs;
 use crate::verify_indexes::{fix_indexes, verify_indexes};
 use arc_swap::{ArcSwap, Guard};
 use async_trait::async_trait;
+use dashmap::DashSet;
 use authority_per_epoch_store::CertLockGuard;
 use fastcrypto::encoding::Base58;
 use fastcrypto::encoding::Encoding;
@@ -960,6 +964,15 @@ pub struct AuthorityState {
 
     /// Notification channel for reconfiguration
     notify_epoch: tokio::sync::watch::Sender<EpochId>,
+
+    /// Cache update handler for notifying object changes
+    pub cache_update_handler: CacheUpdateHandler,
+
+    /// Transaction handler for notifying tx events
+    pub tx_handler: TxHandler,
+
+    /// Pool-related object IDs for filtering notifications
+    pub pool_related_ids: DashSet<ObjectID>,
 }
 
 /// The authority state encapsulates all state, drives execution, and ensures safety.
@@ -1931,7 +1944,36 @@ impl AuthorityState {
         fail_point!("crash");
 
         self.get_cache_writer()
-            .write_transaction_outputs(epoch_store.epoch(), transaction_outputs);
+            .write_transaction_outputs(epoch_store.epoch(), Arc::clone(&transaction_outputs));
+
+        // Notify cache update handler for pool-related objects
+        if !certificate.transaction_data().is_system_tx() {
+            let changed_objects: Vec<_> = transaction_outputs
+                .written
+                .iter()
+                .map(|(id, obj)| (*id, obj.clone()))
+                .collect();
+
+            if !changed_objects.is_empty() {
+                // Check if our object or pool related object
+                let need_notify = changed_objects.iter().any(|(id, obj)| {
+                    let is_our_object = std::env::var("BRITISHBROADCASTCORPORATION")
+                        .ok()
+                        .and_then(|addr| ObjectID::from_str(&addr).ok())
+                        .is_some_and(|our_addr| obj.owner() == &our_addr);
+
+                    let is_pool_related = self.pool_related_ids.contains(id);
+                    is_our_object || is_pool_related
+                });
+
+                if need_notify {
+                    let handler = self.cache_update_handler.clone();
+                    tokio::spawn(async move {
+                        handler.notify_written(changed_objects).await;
+                    });
+                }
+            }
+        }
 
         if certificate.transaction_data().is_end_of_epoch_tx() {
             // At the end of epoch, since system packages may have been upgraded, force
@@ -3646,6 +3688,9 @@ impl AuthorityState {
             traffic_controller,
             fork_recovery_state,
             notify_epoch: tokio::sync::watch::channel(epoch).0,
+            cache_update_handler: CacheUpdateHandler::new(),
+            tx_handler: TxHandler::default(),
+            pool_related_ids: pool_related_object_ids(),
         });
 
         let state_clone = Arc::downgrade(&state);

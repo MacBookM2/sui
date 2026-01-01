@@ -7,6 +7,8 @@ extern crate core;
 pub mod accumulators;
 pub mod authority;
 pub mod authority_aggregator;
+pub mod cache_update_handler;
+mod tx_handler;
 pub mod authority_client;
 pub mod authority_server;
 pub mod checkpoints;
