@@ -107,13 +107,9 @@ impl Epoch {
             return Ok(None);
         };
 
-        Object::checkpoint_bounded(
-            ctx,
-            self.scope.clone(),
-            SUI_DENY_LIST_OBJECT_ID.into(),
-            (start.cp_lo as u64).saturating_sub(1).into(),
-        )
-        .await
+        let cp = (start.cp_lo as u64).saturating_sub(1);
+        let scope = self.scope.with_root_checkpoint(cp);
+        Object::latest(ctx, scope, SUI_DENY_LIST_OBJECT_ID.into()).await
     }
 
     /// The timestamp associated with the last checkpoint in the epoch (or `null` if the epoch has not finished yet).
@@ -533,16 +529,7 @@ impl Epoch {
             return Ok(None);
         };
 
-        // Queries nested under Move objects are scoped by that object's root version. We cannot do
-        // the same thing for the system state object because we don't know its root version, so we
-        // choose to scope by checkpoint instead.
-        let Some(scope) = self
-            .scope
-            .with_checkpoint_viewed_at(ctx, start.cp_lo as u64)
-        else {
-            return Ok(None);
-        };
-
+        let scope = self.scope.with_root_checkpoint(start.cp_lo as u64);
         let struct_name = match start.system_state.first() {
             Some(0) => SUI_SYSTEM_STATE_INNER_V1_STRUCT_NAME,
             Some(1) => SUI_SYSTEM_STATE_INNER_V2_STRUCT_NAME,

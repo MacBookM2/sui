@@ -43,6 +43,7 @@ use crate::{
     error::{RpcError, bad_user_input, upcast},
     pagination::{Page, PaginationConfig},
     scope::Scope,
+    task::watermark::Watermarks,
 };
 
 use super::{
@@ -604,10 +605,13 @@ impl MovePackage {
                 .await
                 .map_err(upcast)
         } else if let Some(cp) = key.at_checkpoint {
-            let scope = scope
-                .with_checkpoint_viewed_at(ctx, cp.into())
-                .ok_or_else(|| bad_user_input(Error::Future(cp.into())))?;
+            // Validate checkpoint isn't in the future
+            let watermark: &Arc<Watermarks> = ctx.data()?;
+            if u64::from(cp) > watermark.high_watermark().checkpoint() {
+                return Err(bad_user_input(Error::Future(cp.into())));
+            }
 
+            // checkpoint_bounded sets the root checkpoint bound
             Self::checkpoint_bounded(ctx, scope, key.address, cp)
                 .await
                 .map_err(upcast)
@@ -685,7 +689,10 @@ impl MovePackage {
             return Ok(None);
         };
 
-        Self::from_stored(scope, stored_package)
+        Self::from_stored(
+            scope.with_root_checkpoint(at_checkpoint.into()),
+            stored_package,
+        )
     }
 
     /// Construct a GraphQL representation of a `MovePackage` from its representation in the

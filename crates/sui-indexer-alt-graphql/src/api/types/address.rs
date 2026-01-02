@@ -1,6 +1,8 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use std::sync::Arc;
+
 use async_graphql::{
     Context, Enum, InputObject, Interface, Object,
     connection::{Connection, Edge},
@@ -18,6 +20,7 @@ use crate::{
     error::{RpcError, bad_user_input},
     pagination::{Page, PaginationConfig},
     scope::Scope,
+    task::watermark::Watermarks,
 };
 
 use super::{
@@ -419,15 +422,18 @@ impl Address {
         let bounds = key.root_version.is_some() as u8 + key.at_checkpoint.is_some() as u8;
 
         if bounds > 1 {
-            return Err(bad_user_input(Error::OneBound));
+            Err(bad_user_input(Error::OneBound))
         } else if let Some(v) = key.root_version {
             let scope = scope.with_root_version(v.into());
             Ok(Self::with_address(scope, key.address.into()))
         } else if let Some(cp) = key.at_checkpoint {
-            let scope = scope
-                .with_checkpoint_viewed_at(ctx, cp.into())
-                .ok_or_else(|| bad_user_input(Error::Future(cp.into())))?;
+            // Validate checkpoint isn't in the future
+            let watermark: &Arc<Watermarks> = ctx.data()?;
+            if u64::from(cp) > watermark.high_watermark().checkpoint() {
+                return Err(bad_user_input(Error::Future(cp.into())));
+            }
 
+            let scope = scope.with_root_checkpoint(cp.into());
             Ok(Self::with_address(scope, key.address.into()))
         } else {
             Ok(Self::with_address(scope, key.address.into()))
