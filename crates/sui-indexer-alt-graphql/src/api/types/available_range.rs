@@ -348,6 +348,9 @@ collect_pipelines! {
             pipelines.insert("ev_struct_inst".to_string());
         }
     };
+    Query.[nameRecord] |pipelines, _filters| {
+        pipelines.insert("obj_versions".to_string());
+    };
     Query.[object] |pipelines, filters| {
         if !filters.contains("version") {
             pipelines.insert("obj_versions".to_string());

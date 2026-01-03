@@ -1076,6 +1076,18 @@ MutateConsensusStreamEnded.sequenceNumber
 Mutation.executeTransaction
   => {}
 
+NameRecord.domain
+  => {}
+
+NameRecord.contents
+  => {}
+
+NameRecord.target
+  => {}
+
+NameRecord.parent
+  => {}
+
 Object.address
   => {}
 
@@ -1285,6 +1297,9 @@ Query.multiGetTransactionEffects
 
 Query.multiGetTypes
   => {}
+
+Query.nameRecord
+  => {"obj_versions"}
 
 Query.object
   => {"obj_versions"}

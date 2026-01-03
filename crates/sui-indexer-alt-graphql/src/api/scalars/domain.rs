@@ -35,3 +35,9 @@ impl From<NativeDomain> for Domain {
         Domain(value)
     }
 }
+
+impl From<Domain> for NativeDomain {
+    fn from(value: Domain) -> Self {
+        value.0
+    }
+}

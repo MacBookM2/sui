@@ -37,6 +37,7 @@ use super::{
         event::{CEvent, Event, filter::EventFilter},
         move_package::{self, MovePackage, PackageCheckpointFilter, PackageKey},
         move_type::{self, MoveType},
+        name_record::NameRecord,
         name_service::name_to_address,
         object::{self, Object, ObjectKey, VersionFilter},
         object_filter::{ObjectFilter, ObjectFilterValidator as OFValidator},
@@ -316,6 +317,17 @@ impl Query {
             .map(|t| async move { MoveType::canonicalize(t.into(), self.scope(ctx)?).await });
 
         try_join_all(types).await
+    }
+
+    /// Look-up a Name Service NameRecord by its domain name.
+    ///
+    /// Returns `null` if the record does not exist or has expired.
+    async fn name_record(
+        &self,
+        ctx: &Context<'_>,
+        name: Domain,
+    ) -> Result<Option<NameRecord>, RpcError<object::Error>> {
+        NameRecord::by_domain(ctx, self.scope(ctx)?, name.into()).await
     }
 
     /// Fetch an object by its address.

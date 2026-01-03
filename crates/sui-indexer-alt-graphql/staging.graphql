@@ -2673,6 +2673,32 @@ type Mutation {
 }
 
 """
+A Name Service NameRecord representing a domain name registration.
+"""
+type NameRecord {
+	"""
+	On-chain representation of the underlying Name Service `NameRecord` Move value.
+	"""
+	contents: MoveValue!
+	"""
+	The domain name this record is for.
+	"""
+	domain: String!
+	"""
+	The Name Service Name Record of the parent domain, if this is a subdomain.
+	
+	Returns `null` if this is not a subdomain.
+	"""
+	parent: NameRecord
+	"""
+	The address this domain points to.
+	
+	`rootVersion` and `atCheckpoint` control how the target `Address` is scoped. If neither is provided, the `Address` is scoped to the latest checkpoint known to the RPC.
+	"""
+	target(rootVersion: UInt53, atCheckpoint: UInt53): Address
+}
+
+"""
 An Object on Sui is either a typed value (a Move Object) or a Package (modules containing functions and types).
 
 Every object on Sui is identified by a unique address, and has a version number that increases with every modification. Objects also hold metadata detailing their current owner (who can sign for access to the object and whether that access can modify and/or delete the object), and the digest of the last transaction that modified the object.
@@ -3290,6 +3316,12 @@ type Query {
 	Returns a list of types that is guaranteed to be the same length as `keys`. If a type in `keys` could not be found, its corresponding entry in the result will be `null`.
 	"""
 	multiGetTypes(keys: [String!]!): [MoveType]!
+	"""
+	Look-up a Name Service NameRecord by its domain name.
+	
+	Returns `null` if the record does not exist or has expired.
+	"""
+	nameRecord(name: String!): NameRecord
 	"""
 	Fetch an object by its address.
 	
