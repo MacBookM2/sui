@@ -42,6 +42,7 @@ use super::{
     move_object::MoveObject,
     move_type::MoveType,
     move_value::MoveValue,
+    name_record::NameRecord,
     object::{self, CLive, CVersion, Object, VersionFilter},
     object_filter::{ObjectFilter, ObjectFilterValidator as OFValidator},
     owner::Owner,
@@ -177,6 +178,14 @@ impl DynamicField {
     /// The structured representation of the object's contents.
     pub(crate) async fn contents(&self, ctx: &Context<'_>) -> Result<Option<MoveValue>, RpcError> {
         self.super_.contents(ctx).await
+    }
+
+    /// The domain explicitly configured as the default Name Service name for this address.
+    pub(crate) async fn default_name_record(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Option<NameRecord>, RpcError<object::Error>> {
+        self.super_.default_name_record(ctx).await
     }
 
     /// The domain explicitly configured as the default SuiNS name for this address.

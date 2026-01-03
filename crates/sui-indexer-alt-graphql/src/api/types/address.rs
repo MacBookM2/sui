@@ -15,7 +15,7 @@ use crate::{
         scalars::{
             owner_kind::OwnerKind, sui_address::SuiAddress, type_filter::TypeInput, uint53::UInt53,
         },
-        types::dynamic_field,
+        types::{dynamic_field, name_record::NameRecord},
     },
     error::{RpcError, bad_user_input},
     pagination::{Page, PaginationConfig},
@@ -76,6 +76,11 @@ pub(crate) enum AddressTransactionRelationship {
         arg(name = "before", ty = "Option<balance::Cursor>"),
         ty = "Result<Option<Connection<String, Balance>>, RpcError<balance::Error>>",
         desc = "Total balance across coins owned by this address, grouped by coin type.",
+    ),
+    field(
+        name = "default_name_record",
+        ty = "Result<Option<NameRecord>, RpcError<object::Error>>",
+        desc = "The domain explicitly configured as the default Name Service name for this address."
     ),
     field(
         name = "default_suins_name",
@@ -214,6 +219,14 @@ impl Address {
         Balance::paginate(ctx, self.scope.clone(), self.address, page)
             .await
             .map(Some)
+    }
+
+    /// The domain explicitly configured as the default Name Service name for this address.
+    pub(crate) async fn default_name_record(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Option<NameRecord>, RpcError<object::Error>> {
+        NameRecord::by_address(ctx, self.scope.without_root_bound(), self.address).await
     }
 
     /// The domain explicitly configured as the default SuiNS name for this address.

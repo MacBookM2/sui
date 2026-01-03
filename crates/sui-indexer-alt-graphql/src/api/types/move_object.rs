@@ -30,6 +30,7 @@ use super::{
     dynamic_field::{DynamicField, DynamicFieldName},
     move_type::MoveType,
     move_value::MoveValue,
+    name_record::NameRecord,
     object::{self, CLive, CVersion, Object, VersionFilter},
     object_filter::{ObjectFilter, ObjectFilterValidator as OFValidator},
     owner::Owner,
@@ -188,6 +189,14 @@ impl MoveObject {
 
         let type_ = MoveType::from_native(native.type_().clone().into(), scope);
         Ok(Some(MoveValue::new(type_, native.contents().to_owned())))
+    }
+
+    /// The domain explicitly configured as the default Name Service name for this address.
+    pub(crate) async fn default_name_record(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Option<NameRecord>, RpcError<object::Error>> {
+        self.super_.default_name_record(ctx).await
     }
 
     /// The domain explicitly configured as the default SuiNS name for this address.

@@ -62,6 +62,7 @@ use super::{
     dynamic_field::{DynamicField, DynamicFieldName},
     move_object::MoveObject,
     move_package::MovePackage,
+    name_record::NameRecord,
     object_filter::{ObjectFilter, ObjectFilterValidator as OFValidator},
     owner::Owner,
     transaction::{CTransaction, Transaction, filter::TransactionFilter},
@@ -305,6 +306,14 @@ impl Object {
         before: Option<balance::Cursor>,
     ) -> Result<Option<Connection<String, Balance>>, RpcError<balance::Error>> {
         self.super_.balances(ctx, first, after, last, before).await
+    }
+
+    /// The domain explicitly configured as the default Name Service name for this address.
+    pub(crate) async fn default_name_record(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Option<NameRecord>, RpcError<Error>> {
+        self.super_.default_name_record(ctx).await
     }
 
     /// The domain explicitly configured as the default SuiNS name for this address.

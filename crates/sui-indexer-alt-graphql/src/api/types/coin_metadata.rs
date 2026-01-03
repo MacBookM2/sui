@@ -36,6 +36,7 @@ use super::{
     dynamic_field::{self, DynamicField, DynamicFieldName},
     move_object::MoveObject,
     move_value::MoveValue,
+    name_record::NameRecord,
     object::{self, CLive, CVersion, Object, VersionFilter},
     object_filter::{ObjectFilter, ObjectFilterValidator as OFValidator},
     owner::Owner,
@@ -167,6 +168,14 @@ impl CoinMetadata {
             NativeContents::Metadata(metadata) => metadata.decimals,
             NativeContents::Registry(currency) => currency.decimals,
         }))
+    }
+
+    /// The domain explicitly configured as the default Name Service name for this address.
+    pub(crate) async fn default_name_record(
+        &self,
+        ctx: &Context<'_>,
+    ) -> Result<Option<NameRecord>, RpcError<object::Error>> {
+        self.super_.default_name_record(ctx).await
     }
 
     /// The domain explicitly configured as the default SuiNS name for this address.
