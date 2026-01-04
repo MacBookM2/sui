@@ -103,10 +103,6 @@ type Address implements IAddressable {
 	"""
 	defaultNameRecord: NameRecord
 	"""
-	The domain explicitly configured as the default SuiNS name for this address.
-	"""
-	defaultSuinsName: String
-	"""
 	Access a dynamic field on an object using its type and BCS-encoded name.
 	
 	Returns `null` if a dynamic field with that name could not be found attached to the object with this address.
@@ -588,10 +584,6 @@ type CoinMetadata implements IAddressable & IMoveObject & IObject {
 	"""
 	defaultNameRecord: NameRecord
 	"""
-	The domain explicitly configured as the default SuiNS name for this address.
-	"""
-	defaultSuinsName: String
-	"""
 	If the currency is regulated, this object represents the capability to modify the deny list. If a capability is known but wrapped, its address can be fetched but other fields will not be accessible.
 	"""
 	denyCap: MoveObject
@@ -956,10 +948,6 @@ type DynamicField implements IAddressable & IMoveObject & IObject {
 	The domain explicitly configured as the default Name Service name for this address.
 	"""
 	defaultNameRecord: NameRecord
-	"""
-	The domain explicitly configured as the default SuiNS name for this address.
-	"""
-	defaultSuinsName: String
 	"""
 	32-byte hash that identifies the object's contents, encoded in Base58.
 	"""
@@ -1583,10 +1571,6 @@ interface IAddressable {
 	"""
 	defaultNameRecord: NameRecord
 	"""
-	The domain explicitly configured as the default SuiNS name for this address.
-	"""
-	defaultSuinsName: String
-	"""
 	Fetch the total balances keyed by coin types (e.g. `0x2::sui::SUI`) owned by this address.
 	
 	Returns `null` when no checkpoint is set in scope (e.g. execution scope). If the address does not own any coins of a given type, a balance of zero is returned for that type.
@@ -2191,10 +2175,6 @@ type MoveObject implements IAddressable & IMoveObject & IObject {
 	"""
 	defaultNameRecord: NameRecord
 	"""
-	The domain explicitly configured as the default SuiNS name for this address.
-	"""
-	defaultSuinsName: String
-	"""
 	32-byte hash that identifies the object's contents, encoded in Base58.
 	"""
 	digest: String
@@ -2345,10 +2325,6 @@ type MovePackage implements IAddressable & IObject {
 	The domain explicitly configured as the default Name Service name for this address.
 	"""
 	defaultNameRecord: NameRecord
-	"""
-	The domain explicitly configured as the default SuiNS name for this address.
-	"""
-	defaultSuinsName: String
 	"""
 	32-byte hash that identifies the package's contents, encoded in Base58.
 	"""
@@ -2764,10 +2740,6 @@ type Object implements IAddressable & IObject {
 	The domain explicitly configured as the default Name Service name for this address.
 	"""
 	defaultNameRecord: NameRecord
-	"""
-	The domain explicitly configured as the default SuiNS name for this address.
-	"""
-	defaultSuinsName: String
 	"""
 	32-byte hash that identifies the object's contents, encoded in Base58.
 	"""
@@ -3432,10 +3404,6 @@ type Query {
 	Unlike `executeTransaction`, this does not require signatures since the transaction is not committed to the blockchain. This allows for previewing transaction effects, estimating gas costs, and testing transaction logic without spending gas or requiring valid signatures.
 	"""
 	simulateTransaction(transaction: JSON!): SimulationResult!
-	"""
-	Look-up an account by its SuiNS name, assuming it has a valid, unexpired name registration.
-	"""
-	suinsName(address: String!, rootVersion: UInt53): Address
 	"""
 	Fetch a transaction by its digest.
 	

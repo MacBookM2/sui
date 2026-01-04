@@ -29,7 +29,6 @@ use super::{
     dynamic_field::{DynamicField, DynamicFieldName},
     move_object::MoveObject,
     move_package::MovePackage,
-    name_service::address_to_name,
     object::{self, Object, ObjectKey},
     object_filter::{ObjectFilter, ObjectFilterValidator as OFValidator},
     transaction::{
@@ -81,11 +80,6 @@ pub(crate) enum AddressTransactionRelationship {
         name = "default_name_record",
         ty = "Result<Option<NameRecord>, RpcError<object::Error>>",
         desc = "The domain explicitly configured as the default Name Service name for this address."
-    ),
-    field(
-        name = "default_suins_name",
-        ty = "Result<Option<String>, RpcError<object::Error>>",
-        desc = "The domain explicitly configured as the default SuiNS name for this address."
     ),
     field(
         name = "multi_get_balances",
@@ -227,14 +221,6 @@ impl Address {
         ctx: &Context<'_>,
     ) -> Result<Option<NameRecord>, RpcError<object::Error>> {
         NameRecord::by_address(ctx, self.scope.without_root_bound(), self.address).await
-    }
-
-    /// The domain explicitly configured as the default SuiNS name for this address.
-    pub(crate) async fn default_suins_name(
-        &self,
-        ctx: &Context<'_>,
-    ) -> Result<Option<String>, RpcError> {
-        address_to_name(ctx, &self.scope, self.address).await
     }
 
     /// Access a dynamic field on an object using its type and BCS-encoded name.
