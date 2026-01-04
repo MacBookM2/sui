@@ -1250,6 +1250,9 @@ Pure.bytes
 Query.address
   => {}
 
+Query.address (filter: name)
+  => {"obj_versions"}
+
 Query.chainIdentifier
   => {}
 
