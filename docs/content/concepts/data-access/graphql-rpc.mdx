@@ -275,28 +275,28 @@ To see these principles put into practice, consult the examples for [paginating 
 
 ## Scope
 
-GraphQL requests are evaluated in a **scope** that controls the checkpoint being viewed. The GraphQL service will respond to queries as if this is the last checkpoint to have been executed. By default this is set to the latest checkpoint that the service has all data for. To avoid returning partial responses, the service will not allow queries to specify a later checkpoint than this, but it can be set to an earlier checkpoint to perform historical queries.
+GraphQL requests are evaluated in a **scope** that controls the checkpoint being viewed. The GraphQL service will respond to queries as if this is the last checkpoint to have been executed. By default, this is set to the latest checkpoint that the service has all data for. To avoid returning partial responses, the service will not allow queries to specify a later checkpoint than this, but it can be set to an earlier checkpoint to perform historical queries.
 
-The scope optionally provides a **root object** bound which only applies to queries that fetch dynamic fields. This fetches the dynamic fields as they were at the end of a specific checkpoint or when their root object was at some given version. For any wrapped or child (object-owned) object, its root object is defined recursively as:
+Optionally, the scope provides a **root object** bound that applies only to queries that fetch dynamic fields. The query fetches dynamic fields as they existed at the end of a specific checkpoint or when their root object reached a given version. For any wrapped or child (object-owned) object, the root object is defined recursively as:
 
-- the root object of the object it is wrapped in, if it is wrapped,
-- the root object of its owner, if it is owned by another object, otherwise
-- the object itself.
+- The root object of the object it is wrapped in, if it is wrapped
+- The root object of its owner, if it is owned by another object
+- The object itself
 
-If a dynamic field's root object has version `v`, its own version, `w` is the latest version such that `w <= v` -- that is, the latest version of the dynamic field that existed when its root object was at version `v`.
+If a dynamic field's root object has version `v`, its own version, `w` is the latest version such that `w <= v` meaning the latest version of the dynamic field that existed when its root object was at version `v`.
 
 If a root object bound is not provided, dynamic fields are fetched at the checkpoint being viewed, while if a checkpoint-based root object bound exists, it does not impact the checkpoint being viewed.
 
-Finally, the GraphQL service treats queries nested under executed (`Mutation.executeTransaction`) and simulated (`Query.simulateTransaction`) transactions as being in a special scope that exists just after the transaction that was executed or simulated, without having indexed that transaction.
+Finally, the GraphQL service treats queries nested under executed `Mutation.executeTransaction` and simulated `Query.simulateTransaction` transactions as being in a special scope that exists just after the transaction that was executed or simulated, without having indexed that transaction.
 
 The scope a query is evaluated in impacts which fields are available. In particular:
 
-- live object set queries are not available under executed transaction scopes, or if there is a root object bound given in terms of a specific version, because these queries rely on data that is indexed at the checkpoint level.
-- queries that paginate through history are not available under executed transaction scopes, because it's not possible ot pin-point where in the history the transaction will fall before it has been indexed.
+- Live object set queries are not available under executed transaction scopes or when a root object binding specifies a particular version. These queries rely on data that is indexed at the checkpoint level.
+- Queries that paginate through history are not available under executed transaction scopes. Before indexing occurs, the system cannot determine where in the history the transaction falls.
 
-### Setting Checkpoint Scope
+### Setting checkpoint scope
 
-Queries can be run against a historical checkpoint either using `Checkpoint.query`, or in the case of a [consistent](#consistency) live object set query (like fetching an address' owned objects or balances, or an object's dynamic fields), by continuing to paginate using a cursor obtained from a previous query at that checkpoint:
+You can run queries against a historical checkpoint using `Checkpoint.query`. For [consistent](#consistency) live object set queries (such as fetching an address' owned objects or balances, or an object's dynamic fields), you can continue to paginate using a cursor obtained from a previous query at that checkpoint.
 
 ```graphql
 query AtCheckpoint($cp: UInt53!) {
@@ -327,7 +327,7 @@ query NextBalancesPage($address: SuiAddress!, $after: String!) {
 }
 ```
 
-`AtCheckpoint` will return the last 5 transactions to execute as of the end of the checkpoint with sequence number `$cp`, while `NextBalancesPage` will fetch the next 10 balances for `$address` after the page that ended at cursor `$after`. It is also possible to combine both approaches, to ensure that the first page of a live object query is fetched from a specific checkpoint:
+`AtCheckpoint` returns the last 5 transactions to execute as of the end of the checkpoint with sequence number `$cp`, while `NextBalancesPage` will fetch the next 10 balances for `$address` after the page that ended at cursor `$after`. It is also possible to combine both approaches, to ensure that the first page of a live object query is fetched from a specific checkpoint:
 
 ```graphql
 query FirstBalancesPageAtCheckpoint($address: SuiAddress!, $cp: UInt53) {
@@ -350,11 +350,11 @@ query FirstBalancesPageAtCheckpoint($address: SuiAddress!, $cp: UInt53) {
 }
 ```
 
-Responses to these queries are subject to [retention](#retention). If `$cp` is outside the retention window `Query.transactions`, `AtCheckpoint` will return no results, while an attempt to continue paginating `NextBalancesPage` at a checkpoint outside the consistent range will return an error.
+Responses to these queries are subject to [retention](#retention). If `$cp` is outside the retention window `Query.transactions`, `AtCheckpoint` returns no results, while an attempt to continue paginating `NextBalancesPage` at a checkpoint outside the consistent range returns an error.
 
-### Setting Root Version Scope
+### Setting root version scope
 
-Queries nested under the fetch of an object at a specific version are scoped by a root object bound at its version. For example in the following query, the dynamic field with name `42u64` is fetched as it existed when its owning object was at version `$v`:
+Queries nested under the fetch of an object at a specific version are scoped by a root object bound at its version. For example, in the following query, the dynamic field with name `42u64` is fetched as it existed when its owning object was at version `$v`:
 
 ```graphql
 query ObjectsDynamicFields($id: SuiAddress!, $v: UInt53!) {
@@ -370,11 +370,11 @@ query ObjectsDynamicFields($id: SuiAddress!, $v: UInt53!) {
 }
 ```
 
-This property applies recursively to nested dynamic field queries, and also applies if the root object is fetched at a specific checkpoint using the `atCheckpoint` parameter or at the latest checkpoint (by omitting all parameters), in which case the root object bound is checkpoint-based.
+This property applies recursively to nested dynamic field queries. It also applies if the root object is fetched at a specific checkpoint using the `atCheckpoint` parameter or at the latest checkpoint (by omitting all parameters). In these cases, the root object bound is checkpoint-based.
 
-The `rootVersion` parameter overrides this implicit bound, fetching the object as if it was subject to root version bound governed by the parameter, which also applies to queries nested underneath it. This is necessary when fetching a dynamic field directly (as an object), as an object's version is not updated when its children are updated unless it is a root object.
+The `rootVersion` parameter overrides this implicit bound. It fetches the object as if it was subject to a root version bound governed by the parameter, which also applies to queries nested underneath it. This is necessary when fetching a dynamic field directly (as an object), because an object's version is not updated when its children are updated unless it is a root object.
 
-In the following query, `$id` is the address of a dynamic field fetched as it existed when its root object was at version `$r`, and the nested query fetches a nested dynamic field with name `42u64` owned by a wrapped object stored in field `foo` of the dynamic field. The nested fetch is subject to the same root object version bound, `$r`.
+In the following query, `$id` is the address of a dynamic field fetched as it existed when its root object was at version `$r`. The nested query fetches a nested dynamic field with name `42u64` owned by a wrapped object stored in field `foo` of the dynamic field. The nested fetch is subject to the same root object version bound, `$r`.
 
 ```graphql
 query NestedDynamicFields($id: SuiAddress!, $r: UInt53!) {
@@ -394,7 +394,7 @@ query NestedDynamicFields($id: SuiAddress!, $r: UInt53!) {
 }
 ```
 
-Queries that return an `Address` can be used to make nested dynamic field queries on wrapped objects. An `Address` does not have an associated version, but `Query.address` can accept `rootVersion` or `atCheckpoint` parameters to set root object bounds for nested dynamic field queries. The following query fetches a dynamic field with name `42u64` owned by an object with address `$id` -- which can belong to a wrapped object -- as it was when its root object was at version `$r`:
+Queries that return an `Address` can be used to make nested dynamic field queries on wrapped objects. An `Address` does not have an associated version, but `Query.address` can accept `rootVersion` or `atCheckpoint` parameters to set root object bounds for nested dynamic field queries. The following query fetches a dynamic field with name `42u64` owned by an object with address `$id` (which can belong to a wrapped object) as it existed when its root object was at version `$r`:
 
 ```graphql
 query WrappedDynamicField($id: SuiAddress!, $r: UInt53!) {
@@ -410,7 +410,7 @@ query WrappedDynamicField($id: SuiAddress!, $r: UInt53!) {
 }
 ```
 
-While nested within a scope that has a root object bound, it is possible to reset or override the bound, using the `objectAt` or `addressAt` queries. These fields query the same entity but at a different position in its history. If these fields are not provided any parameters, they fetch the state of the object at the latest known checkpoint to the GraphQL service. The following query fetches the latest version of an object that was previously fetched at version `$v`:
+While nested within a scope that has a root object bound, you can reset or override the bound using the `objectAt` or `addressAt` queries. These fields query the same entity but at a different position in its history. If these fields are not provided any parameters, they fetch the state of the object at the latest known checkpoint to the GraphQL service. The following query fetches the latest version of an object that was previously fetched at version `$v`:
 
 ```graphql
 query LatestDynamicField($id: SuiAddress!, $v: UInt53!) {
