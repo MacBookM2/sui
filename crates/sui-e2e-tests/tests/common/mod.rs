@@ -7,7 +7,8 @@ use sui_keys::keystore::AccountKeystore;
 use sui_protocol_config::{OverrideGuard, ProtocolConfig, ProtocolVersion};
 use sui_test_transaction_builder::{FundSource, TestTransactionBuilder};
 use sui_types::{
-    accumulator_root::AccumulatorValue,
+    accumulator_metadata::AccumulatorOwner,
+    accumulator_root::{AccumulatorValue, U128},
     balance::Balance,
     base_types::{FullObjectRef, ObjectID, ObjectRef, SequenceNumber, SuiAddress},
     coin_reservation::ParsedObjectRefWithdrawal,
@@ -15,6 +16,7 @@ use sui_types::{
     effects::{TransactionEffects, TransactionEffectsAPI},
     error::SuiResult,
     gas_coin::GAS,
+    storage::ChildObjectResolver,
     transaction::TransactionData,
 };
 use test_cluster::{TestCluster, TestClusterBuilder};
@@ -133,8 +135,18 @@ impl TestEnv {
         (sender, gas)
     }
 
+    pub fn get_sender_and_all_gas(&self, index: usize) -> (SuiAddress, Vec<ObjectRef>) {
+        let sender = self.get_sender(index);
+        let gas = self.gas_objects[&sender].clone();
+        (sender, gas)
+    }
+
     pub fn tx_builder(&self, sender: SuiAddress) -> TestTransactionBuilder {
         let gas = self.gas_objects.get(&sender).unwrap()[0];
+        TestTransactionBuilder::new(sender, gas, self.rgp)
+    }
+
+    pub fn tx_builder_with_gas(&self, sender: SuiAddress, gas: ObjectRef) -> TestTransactionBuilder {
         TestTransactionBuilder::new(sender, gas, self.rgp)
     }
 
@@ -192,10 +204,118 @@ impl TestEnv {
         self.update_all_gas().await;
         res
     }
+
+    pub fn verify_accumulator_exists(&self, owner: SuiAddress, expected_balance: u64) {
+        self.cluster.fullnode_handle.sui_node.with(|node| {
+            let state = node.state();
+            let child_object_resolver = state.get_child_object_resolver().as_ref();
+            verify_accumulator_exists(child_object_resolver, owner, expected_balance);
+        });
+    }
+
+    pub fn get_balance(&self, owner: SuiAddress) -> u64 {
+        self.cluster.fullnode_handle.sui_node.with(|node| {
+            let state = node.state();
+            let child_object_resolver = state.get_child_object_resolver().as_ref();
+            get_balance(child_object_resolver, owner)
+        })
+    }
+
+    pub fn verify_accumulator_removed(&self, owner: SuiAddress) {
+        self.cluster.fullnode_handle.sui_node.with(|node| {
+            let state = node.state();
+            let child_object_resolver = state.get_child_object_resolver().as_ref();
+            let sui_coin_type = Balance::type_tag(GAS::type_tag());
+            assert!(
+                !AccumulatorValue::exists(child_object_resolver, None, owner, &sui_coin_type)
+                    .unwrap(),
+                "Accumulator value should have been removed"
+            );
+            assert!(
+                !AccumulatorOwner::exists(child_object_resolver, None, owner).unwrap(),
+                "Owner object should have been removed"
+            );
+        });
+    }
+
+    pub async fn trigger_reconfiguration(&self) {
+        self.cluster.trigger_reconfiguration().await;
+    }
 }
 
 pub fn get_sui_accumulator_object_id(sender: SuiAddress) -> ObjectID {
     *AccumulatorValue::get_field_id(sender, &Balance::type_tag(GAS::type_tag()))
         .unwrap()
         .inner()
+}
+
+pub fn get_balance(child_object_resolver: &dyn ChildObjectResolver, owner: SuiAddress) -> u64 {
+    let sui_coin_type = Balance::type_tag(GAS::type_tag());
+    let accumulator_value =
+        AccumulatorValue::load(child_object_resolver, None, owner, &sui_coin_type)
+            .expect("read cannot fail");
+    match accumulator_value {
+        Some(AccumulatorValue::U128(u128_val)) => u128_val.value as u64,
+        None => 0,
+    }
+}
+
+pub fn verify_accumulator_exists(
+    child_object_resolver: &dyn ChildObjectResolver,
+    owner: SuiAddress,
+    expected_balance: u64,
+) {
+    let sui_coin_type = Balance::type_tag(GAS::type_tag());
+
+    assert!(
+        AccumulatorValue::exists(child_object_resolver, None, owner, &sui_coin_type).unwrap(),
+        "Accumulator value should have been created"
+    );
+
+    let accumulator_object =
+        AccumulatorValue::load_object(child_object_resolver, None, owner, &sui_coin_type)
+            .expect("read cannot fail")
+            .expect("accumulator should exist");
+
+    assert!(
+        accumulator_object
+            .data
+            .try_as_move()
+            .unwrap()
+            .type_()
+            .is_efficient_representation()
+    );
+
+    let accumulator_value =
+        AccumulatorValue::load(child_object_resolver, None, owner, &sui_coin_type)
+            .expect("read cannot fail")
+            .expect("accumulator should exist");
+
+    assert_eq!(
+        accumulator_value,
+        AccumulatorValue::U128(U128 {
+            value: expected_balance as u128
+        }),
+        "Accumulator value should be {expected_balance}"
+    );
+
+    assert!(
+        AccumulatorOwner::exists(child_object_resolver, None, owner).unwrap(),
+        "Owner object should have been created"
+    );
+
+    let owner_obj = AccumulatorOwner::load(child_object_resolver, None, owner)
+        .expect("read cannot fail")
+        .expect("owner must exist");
+
+    assert!(
+        owner_obj
+            .metadata_exists(child_object_resolver, None, &sui_coin_type)
+            .unwrap(),
+        "Metadata object should have been created"
+    );
+
+    let _metadata = owner_obj
+        .load_metadata(child_object_resolver, None, &sui_coin_type)
+        .unwrap();
 }
