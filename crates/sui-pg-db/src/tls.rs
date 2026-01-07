@@ -17,6 +17,7 @@ use rustls::client::danger::ServerCertVerifier;
 use rustls::pki_types::CertificateDer;
 use rustls::pki_types::ServerName;
 use rustls::pki_types::UnixTime;
+use rustls::pki_types::pem::PemObject;
 use tokio_postgres_rustls::MakeRustlsConnect;
 use tracing::error;
 use webpki_roots::TLS_SERVER_ROOTS;
@@ -124,7 +125,7 @@ pub(crate) fn build_tls_config(
         })?;
 
         let certs = if ca_cert_bytes.starts_with(b"-----BEGIN CERTIFICATE-----") {
-            rustls_pemfile::certs(&mut ca_cert_bytes.as_slice())
+            CertificateDer::pem_slice_iter(&ca_cert_bytes)
                 .collect::<Result<Vec<_>, _>>()
                 .with_context(|| {
                     format!(
