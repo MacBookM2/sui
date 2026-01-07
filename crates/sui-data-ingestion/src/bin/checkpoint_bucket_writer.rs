@@ -4,7 +4,7 @@
 use anyhow::Result;
 use bytes::Bytes;
 use object_store::path::Path;
-use object_store::{Error, ObjectStore};
+use object_store::{Error, ObjectStoreExt};
 use prometheus::Registry;
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
