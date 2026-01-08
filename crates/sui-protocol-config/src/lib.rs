@@ -24,7 +24,7 @@ use tracing::{info, warn};
 
 /// The minimum and maximum protocol versions supported by this build.
 const MIN_PROTOCOL_VERSION: u64 = 1;
-const MAX_PROTOCOL_VERSION: u64 = 107;
+const MAX_PROTOCOL_VERSION: u64 = 108;
 
 // Record history of protocol version allocations here:
 //
@@ -941,6 +941,10 @@ struct FeatureFlags {
     // If true, enable tx contexts in all argument positions
     #[serde(skip_serializing_if = "is_false")]
     flexible_tx_context_positions: bool,
+
+    // If true, skip GC'ed blocks in direct finalization.
+    #[serde(skip_serializing_if = "is_false")]
+    consensus_skip_gced_blocks_in_direct_finalization: bool,
 }
 
 fn is_false(b: &bool) -> bool {
@@ -2496,6 +2500,11 @@ impl ProtocolConfig {
 
     pub fn flexible_tx_context_positions(&self) -> bool {
         self.feature_flags.flexible_tx_context_positions
+    }
+
+    pub fn consensus_skip_gced_blocks_in_direct_finalization(&self) -> bool {
+        self.feature_flags
+            .consensus_skip_gced_blocks_in_direct_finalization
     }
 }
 
@@ -4408,6 +4417,10 @@ impl ProtocolConfig {
                     }
                 }
                 107 => {
+                    cfg.feature_flags
+                        .consensus_skip_gced_blocks_in_direct_finalization = true;
+                }
+                108 => {
                     cfg.feature_flags.gas_rounding_halve_digits = true;
                     cfg.feature_flags.flexible_tx_context_positions = true;
                 }
