@@ -1,0 +1,7 @@
+[package]
+name = "use_math"
+edition = "2024"
+
+[dependencies]
+math_a = { local = "../math_a", rename-from = "math" }
+math_b = { local = "../math_b", rename-from = "math" }
