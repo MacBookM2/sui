@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 use std::borrow::Cow;
+use std::cmp::Ordering;
 use std::str::FromStr;
 
 use anyhow::Context;
@@ -14,7 +15,8 @@ use crate::{
         error::{RpcError, StatusCode, db_error},
         pagination::Page,
     },
-    schema::balances::Key,
+    schema::address_balances::Key as AddressKey,
+    schema::balances::Key as CoinKey,
 };
 
 use super::State;
@@ -55,7 +57,7 @@ pub(super) fn batch_get_balances(
     request: grpc::BatchGetBalancesRequest,
 ) -> Result<grpc::BatchGetBalancesResponse, RpcError<Error>> {
     let config = &state.rpc_config.pagination;
-    let keys = if request.requests.len() > config.max_batch_size as usize {
+    let raw_keys = if request.requests.len() > config.max_batch_size as usize {
         return Err(Error::TooManyRequests(
             request.requests.len(),
             state.rpc_config.pagination.max_batch_size,
@@ -69,23 +71,52 @@ pub(super) fn batch_get_balances(
             .collect::<Result<Vec<_>, _>>()?
     };
 
+    let cb_keys: Vec<CoinKey> = raw_keys
+        .iter()
+        .map(|(owner, type_)| CoinKey {
+            owner: *owner,
+            type_: type_.clone(),
+        })
+        .collect();
+
     let index = &state.store.schema().balances;
-    let values = index
-        .multi_get(checkpoint, &keys)
+    let cbs = index
+        .multi_get(checkpoint, &cb_keys)
         .map_err(|e| db_error(e, "failed to batch get balances"))?;
 
-    let mut balances = Vec::with_capacity(values.len());
-    for (key, value) in keys.into_iter().zip(values) {
+    let ab_keys: Vec<AddressKey> = raw_keys
+        .iter()
+        .map(|(owner, type_)| AddressKey {
+            owner: *owner,
+            type_: type_.clone(),
+        })
+        .collect();
+
+    let index = &state.store.schema().address_balances;
+    let abs = index
+        .multi_get(checkpoint, &ab_keys)
+        .map_err(|e| db_error(e, "failed to batch get address balances"))?;
+
+    let mut balances = Vec::with_capacity(raw_keys.len());
+    for ((cb, ab), key) in cbs.into_iter().zip(abs).zip(raw_keys) {
         let with_prefix = true;
-        let coin_type = key.type_.to_canonical_string(with_prefix);
-        let balance = value.context("Failed to deserialize balance")?.unwrap_or(0);
-        let balance = u64::try_from(balance)
-            .with_context(|| format!("Bad balance for type {coin_type}: {balance}"))?;
+        let coin_type = key.1.to_canonical_string(with_prefix);
+        let coin_balance = cb.context("Failed to deserialize balance")?.unwrap_or(0);
+        let coin_balance = u64::try_from(coin_balance)
+            .with_context(|| format!("Bad balance for type {coin_type}: {coin_balance}"))?;
+        let address_balance = ab
+            .context("Failed to deserialize address balance")?
+            .unwrap_or(0);
+        let address_balance = u64::try_from(address_balance).with_context(|| {
+            format!("Bad address balance for type {coin_type}: {address_balance}")
+        })?;
 
         balances.push(grpc::Balance {
-            owner: Some(key.owner.to_string()),
+            owner: Some(key.0.to_string()),
             coin_type: Some(coin_type),
-            balance: Some(balance),
+            total_balance: Some(address_balance + coin_balance),
+            address_balance: Some(address_balance),
+            coin_balance: Some(coin_balance),
             page_token: None,
         });
     }
@@ -98,22 +129,37 @@ pub(super) fn get_balance(
     checkpoint: u64,
     request: grpc::GetBalanceRequest,
 ) -> Result<grpc::Balance, RpcError<Error>> {
-    let key = key(request)?;
+    let (owner, type_) = key(request)?;
+    let key = CoinKey { owner, type_ };
     let index = &state.store.schema().balances;
-    let balance = index
+    let coin_balance = index
         .get(checkpoint, &key)
-        .map_err(|e| db_error(e, "failed to get balance"))?
+        .map_err(|e| db_error(e, "failed to get coin balance"))?
         .unwrap_or(0);
 
     let with_prefix = true;
     let coin_type = key.type_.to_canonical_string(with_prefix);
-    let balance = u64::try_from(balance)
-        .with_context(|| format!("Bad balance for type {coin_type}: {balance}"))?;
+    let coin_balance = u64::try_from(coin_balance)
+        .with_context(|| format!("Bad balance for type {coin_type}: {coin_balance}"))?;
+
+    let ab_key = AddressKey {
+        owner: key.owner,
+        type_: key.type_.clone(),
+    };
+    let index = &state.store.schema().address_balances;
+    let address_balance = index
+        .get(checkpoint, &ab_key)
+        .map_err(|e| db_error(e, "failed to get address balance"))?
+        .unwrap_or(0);
+    let address_balance = u64::try_from(address_balance)
+        .with_context(|| format!("Bad address balance for type {coin_type}: {address_balance}"))?;
 
     Ok(grpc::Balance {
         owner: Some(key.owner.to_string()),
         coin_type: Some(coin_type),
-        balance: Some(balance),
+        total_balance: Some(address_balance + coin_balance),
+        address_balance: Some(address_balance),
+        coin_balance: Some(coin_balance),
         page_token: None,
     })
 }
@@ -141,33 +187,106 @@ pub(super) fn list_balances(
     // Zero balances may end up in the databases through accumulation. They will eventually be
     // cleaned up by compaction, but until then, they need to be filtered out of results (similar
     // to how RocksDB filters out tombstones).
-    let resp = page.paginate_filtered(index, checkpoint, &Compat(owner), |_, _, balance| {
+    let cb_resp = page.paginate_filtered(index, checkpoint, &Compat(owner), |_, _, balance| {
         *balance > 0
     })?;
 
+    let index = &state.store.schema().address_balances;
+    let ab_resp = page.paginate_prefix(index, checkpoint, &Compat(owner))?;
+
+    let merged_results = merge_balances(cb_resp.results, ab_resp.results);
+    let limit = page.limit();
+    let has_overflow = merged_results.len() > limit;
+    let (has_prev, has_next) = if page.is_from_front() {
+        // Forward: overflow affects has_next
+        (
+            cb_resp.has_prev || ab_resp.has_prev,
+            has_overflow || cb_resp.has_next || ab_resp.has_next,
+        )
+    } else {
+        // Backward: overflow affects has_prev
+        (
+            has_overflow || cb_resp.has_prev || ab_resp.has_prev,
+            cb_resp.has_next || ab_resp.has_next,
+        )
+    };
+
+    let truncated: Vec<_> = if page.is_from_front() {
+        merged_results.into_iter().take(limit).collect()
+    } else {
+        let skip = merged_results.len().saturating_sub(limit);
+        merged_results.into_iter().skip(skip).collect()
+    };
+
     let mut balances = vec![];
-    for (token, key, balance) in resp.results {
-        let coin_type = key.type_.to_canonical_string(/* with_prefix */ true);
-        let balance = u64::try_from(balance)
-            .with_context(|| format!("Bad balance for type {coin_type}: {balance}"))?;
+    for (token, key, coin_balance, address_balance) in truncated {
+        let coin_type = key.1.to_canonical_string(/* with_prefix */ true);
+        let coin_balance = u64::try_from(coin_balance)
+            .with_context(|| format!("Bad balance for type {coin_type}: {coin_balance}"))?;
+
+        let address_balance = u64::try_from(address_balance).with_context(|| {
+            format!("Bad address balance for type {coin_type}: {address_balance}")
+        })?;
 
         balances.push(grpc::Balance {
-            owner: Some(key.owner.to_string()),
+            owner: Some(key.0.to_string()),
             coin_type: Some(coin_type),
-            balance: Some(balance),
+            total_balance: Some(address_balance + coin_balance),
+            address_balance: Some(address_balance),
+            coin_balance: Some(coin_balance),
             page_token: Some(token.into()),
         });
     }
 
     Ok(grpc::ListBalancesResponse {
-        has_previous_page: Some(resp.has_prev),
-        has_next_page: Some(resp.has_next),
+        has_previous_page: Some(has_prev),
+        has_next_page: Some(has_next),
         balances,
     })
 }
 
+/// Merge coin and address balances for the same owner on coin type. The inputs are expected to be
+/// in ascending order.
+fn merge_balances(
+    coin_balances: Vec<(Vec<u8>, CoinKey, i128)>,
+    address_balances: Vec<(Vec<u8>, AddressKey, u128)>,
+) -> Vec<(Vec<u8>, (SuiAddress, TypeTag), i128, u128)> {
+    let mut merged = Vec::with_capacity(coin_balances.len() + address_balances.len());
+    let mut coins = coin_balances.into_iter().peekable();
+    let mut addresses = address_balances.into_iter().peekable();
+    loop {
+        let pick_from = match (coins.peek(), addresses.peek()) {
+            (None, None) => break,
+            (Some(_), None) => Ordering::Less,
+            (None, Some(_)) => Ordering::Greater,
+            (Some((_, ck, _)), Some((_, ak, _))) => ck.type_.cmp(&ak.type_),
+        };
+
+        let next = match pick_from {
+            Ordering::Less => {
+                let (token, key, balance) = coins.next().unwrap();
+                Some((token, (key.owner, key.type_.clone()), balance, 0))
+            }
+            Ordering::Greater => {
+                let (token, key, balance) = addresses.next().unwrap();
+                Some((token, (key.owner, key.type_.clone()), 0, balance))
+            }
+            Ordering::Equal => {
+                let (ctoken, ckey, cbalance) = coins.next().unwrap();
+                let (_, _, abalance) = addresses.next().unwrap();
+                Some((ctoken, (ckey.owner, ckey.type_.clone()), cbalance, abalance))
+            }
+        };
+
+        if let Some(item) = next {
+            merged.push(item);
+        }
+    }
+    merged
+}
+
 /// Convert a point lookup into a key for the underlying index.
-fn key(request: grpc::GetBalanceRequest) -> Result<Key, Error> {
+fn key(request: grpc::GetBalanceRequest) -> Result<(SuiAddress, TypeTag), Error> {
     let owner = if request.owner().is_empty() {
         return Err(Error::MissingOwner);
     } else {
@@ -181,7 +300,7 @@ fn key(request: grpc::GetBalanceRequest) -> Result<Key, Error> {
             .map_err(|_| Error::InvalidType(request.coin_type().to_owned()))?
     };
 
-    Ok(Key { owner, type_ })
+    Ok((owner, type_))
 }
 
 /// Parse the owner's `SuiAddress` from a string. Addresses must start with `0x` followed by
