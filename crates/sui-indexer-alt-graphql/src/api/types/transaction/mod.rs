@@ -24,7 +24,8 @@ use sui_types::{
 use crate::{
     api::{
         scalars::{
-            base64::Base64, cursor::JsonCursor, digest::Digest, fq_name_filter::FqNameFilter, id::Id, json::Json, sui_address::SuiAddress
+            base64::Base64, cursor::JsonCursor, digest::Digest, fq_name_filter::FqNameFilter,
+            id::Id, json::Json, sui_address::SuiAddress,
         },
         types::{
             available_range::AvailableRangeKey,
@@ -179,16 +180,22 @@ impl TransactionContents {
         .transpose()
     }
 
-    /// The transaction as a JSON blob, matching the gRPC proto format.
-    async fn transaction_json(&self) -> Result<Option<Json>, RpcError> {
-        let Some(content) = &self.contents else {
-            return Ok(None);
-        };
+    /// The transaction as a JSON blob, matching the gRPC proto format (excluding BCS).
+    async fn transaction_json(&self) -> Option<Result<Json, RpcError>> {
+        async {
+            let Some(content) = &self.contents else {
+                return Ok(None);
+            };
 
-        let proto_transaction = content.proto_transaction()?;
-        let json_value = serde_json::to_value(&proto_transaction)
-            .context("Failed to serialize transaction to JSON")?;
-        Ok(Some(json_value.try_into()?))
+            let mut proto_transaction = content.proto_transaction()?;
+            // Clear the bcs field as transactionJson is intended to provide a full structured output
+            proto_transaction.bcs = None;
+            let json_value = serde_json::to_value(&proto_transaction)
+                .context("Failed to serialize transaction to JSON")?;
+            Ok(Some(json_value.try_into()?))
+        }
+        .await
+        .transpose()
     }
 
     /// User signatures for this transaction.
