@@ -250,6 +250,7 @@ pub(super) fn list_balances(
 
 /// Merge coin and address balances for the same owner on coin type. The inputs are expected to be
 /// in ascending order.
+#[allow(clippy::type_complexity)]
 fn merge_balances(
     coin_balances: Vec<(Vec<u8>, CoinKey, i128)>,
     address_balances: Vec<(Vec<u8>, AddressKey, u128)>,
