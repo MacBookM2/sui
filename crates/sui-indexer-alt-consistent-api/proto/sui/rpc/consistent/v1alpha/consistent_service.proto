@@ -221,7 +221,7 @@ message Balance {
   // `0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI`.
   optional string coin_type = 2;
 
-  /// The total balance for coins of this type, owned by one address,
+  // The total balance for coins of this type, owned by one address,
   // denominated in its smallest unit.
   optional uint64 total_balance = 3;
 

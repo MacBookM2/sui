@@ -248,7 +248,7 @@ pub struct Balance {
     /// `0x0000000000000000000000000000000000000000000000000000000000000002::sui::SUI`.
     #[prost(string, optional, tag = "2")]
     pub coin_type: ::core::option::Option<::prost::alloc::string::String>,
-    /// / The total balance for coins of this type, owned by one address,
+    /// The total balance for coins of this type, owned by one address,
     /// denominated in its smallest unit.
     #[prost(uint64, optional, tag = "3")]
     pub total_balance: ::core::option::Option<u64>,

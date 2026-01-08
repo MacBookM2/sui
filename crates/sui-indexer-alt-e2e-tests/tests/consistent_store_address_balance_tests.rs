@@ -4,7 +4,7 @@
 use std::path::PathBuf;
 
 use sui_indexer_alt_consistent_api::proto::rpc::consistent::v1alpha::{
-    BatchGetAddressBalancesRequest, GetAddressBalanceRequest, ListAddressBalancesRequest,
+    BatchGetBalancesRequest, GetBalanceRequest, ListBalancesRequest,
     consistent_service_client::ConsistentServiceClient,
 };
 use sui_indexer_alt_e2e_tests::{FullCluster, find};
@@ -506,147 +506,135 @@ async fn test_edge_cases() {
         .await
         .expect("Failed to connect to Consistent Store");
 
-    let request = tonic::Request::new(ListAddressBalancesRequest {
+    let request = tonic::Request::new(ListBalancesRequest {
         owner: None,
         page_size: Some(10),
         ..Default::default()
     });
 
-    let err = client.list_address_balances(request).await.unwrap_err();
+    let err = client.list_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), "Missing 'owner'");
 
-    let request = tonic::Request::new(GetAddressBalanceRequest {
+    let request = tonic::Request::new(GetBalanceRequest {
         owner: None,
         coin_type: Some(GAS::type_().to_string()),
     });
 
-    let err = client.get_address_balance(request).await.unwrap_err();
+    let err = client.get_balance(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), "Missing 'owner'");
 
-    let request = tonic::Request::new(BatchGetAddressBalancesRequest {
+    let request = tonic::Request::new(BatchGetBalancesRequest {
         requests: vec![
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(a.to_string()),
                 coin_type: Some(GAS::type_().to_string()),
             },
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: None,
                 coin_type: Some(GAS::type_().to_string()),
             },
         ],
     });
 
-    let err = client
-        .batch_get_address_balances(request)
-        .await
-        .unwrap_err();
+    let err = client.batch_get_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), "Missing 'owner'");
 
     // Invalid owner address
-    let request = tonic::Request::new(ListAddressBalancesRequest {
+    let request = tonic::Request::new(ListBalancesRequest {
         owner: Some("invalid_address".to_string()),
         page_size: Some(10),
         ..Default::default()
     });
 
-    let err = client.list_address_balances(request).await.unwrap_err();
+    let err = client.list_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), r#"Invalid 'owner': "invalid_address""#);
 
-    let request = tonic::Request::new(GetAddressBalanceRequest {
+    let request = tonic::Request::new(GetBalanceRequest {
         owner: Some("invalid_address".to_string()),
         coin_type: Some(GAS::type_().to_string()),
     });
 
-    let err = client.get_address_balance(request).await.unwrap_err();
+    let err = client.get_balance(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), r#"Invalid 'owner': "invalid_address""#);
 
-    let request = tonic::Request::new(BatchGetAddressBalancesRequest {
+    let request = tonic::Request::new(BatchGetBalancesRequest {
         requests: vec![
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some("invalid_address".to_string()),
                 coin_type: Some(GAS::type_().to_string()),
             },
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(b.to_string()),
                 coin_type: Some(GAS::type_().to_string()),
             },
         ],
     });
 
-    let err = client
-        .batch_get_address_balances(request)
-        .await
-        .unwrap_err();
+    let err = client.batch_get_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), r#"Invalid 'owner': "invalid_address""#);
 
     // Missing coin type
-    let request = tonic::Request::new(GetAddressBalanceRequest {
+    let request = tonic::Request::new(GetBalanceRequest {
         owner: Some(a.to_string()),
         coin_type: None,
     });
 
-    let err = client.get_address_balance(request).await.unwrap_err();
+    let err = client.get_balance(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), "Missing 'coin_type'");
 
-    let request = tonic::Request::new(BatchGetAddressBalancesRequest {
+    let request = tonic::Request::new(BatchGetBalancesRequest {
         requests: vec![
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(a.to_string()),
                 coin_type: None,
             },
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(b.to_string()),
                 coin_type: Some(GAS::type_().to_string()),
             },
         ],
     });
 
-    let err = client
-        .batch_get_address_balances(request)
-        .await
-        .unwrap_err();
+    let err = client.batch_get_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), "Missing 'coin_type'");
 
     // Invalid coin type
-    let request = tonic::Request::new(GetAddressBalanceRequest {
+    let request = tonic::Request::new(GetBalanceRequest {
         owner: Some(a.to_string()),
         coin_type: Some("invalid_coin_type".to_string()),
     });
 
-    let err = client.get_address_balance(request).await.unwrap_err();
+    let err = client.get_balance(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), r#"Invalid 'coin_type': "invalid_coin_type""#);
 
-    let request = tonic::Request::new(BatchGetAddressBalancesRequest {
+    let request = tonic::Request::new(BatchGetBalancesRequest {
         requests: vec![
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(a.to_string()),
                 coin_type: Some(GAS::type_().to_string()),
             },
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(b.to_string()),
                 coin_type: Some("invalid_coin_type".to_string()),
             },
         ],
     });
 
-    let err = client
-        .batch_get_address_balances(request)
-        .await
-        .unwrap_err();
+    let err = client.batch_get_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::InvalidArgument);
     assert_eq!(err.message(), r#"Invalid 'coin_type': "invalid_coin_type""#);
 
     // Not in range
-    let mut request = tonic::Request::new(ListAddressBalancesRequest {
+    let mut request = tonic::Request::new(ListBalancesRequest {
         owner: Some(a.to_string()),
         ..Default::default()
     });
@@ -655,11 +643,11 @@ async fn test_edge_cases() {
         .metadata_mut()
         .insert("x-sui-checkpoint", "10".parse().unwrap());
 
-    let err = client.list_address_balances(request).await.unwrap_err();
+    let err = client.list_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::OutOfRange);
     assert_eq!(err.message(), "Checkpoint 10 not in the consistent range");
 
-    let mut request = tonic::Request::new(GetAddressBalanceRequest {
+    let mut request = tonic::Request::new(GetBalanceRequest {
         owner: Some(a.to_string()),
         coin_type: Some(GAS::type_().to_string()),
     });
@@ -668,17 +656,17 @@ async fn test_edge_cases() {
         .metadata_mut()
         .insert("x-sui-checkpoint", "10".parse().unwrap());
 
-    let err = client.get_address_balance(request).await.unwrap_err();
+    let err = client.get_balance(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::OutOfRange);
     assert_eq!(err.message(), "Checkpoint 10 not in the consistent range");
 
-    let mut request = tonic::Request::new(BatchGetAddressBalancesRequest {
+    let mut request = tonic::Request::new(BatchGetBalancesRequest {
         requests: vec![
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(a.to_string()),
                 coin_type: Some(GAS::type_().to_string()),
             },
-            GetAddressBalanceRequest {
+            GetBalanceRequest {
                 owner: Some(b.to_string()),
                 coin_type: Some(GAS::type_().to_string()),
             },
@@ -689,10 +677,7 @@ async fn test_edge_cases() {
         .metadata_mut()
         .insert("x-sui-checkpoint", "10".parse().unwrap());
 
-    let err = client
-        .batch_get_address_balances(request)
-        .await
-        .unwrap_err();
+    let err = client.batch_get_balances(request).await.unwrap_err();
     assert_eq!(err.code(), tonic::Code::OutOfRange);
     assert_eq!(err.message(), "Checkpoint 10 not in the consistent range");
 }
@@ -710,7 +695,7 @@ async fn list_balances(
         .expect("Failed to connect to Consistent Store");
 
     let owner = owner.to_string();
-    let mut request = tonic::Request::new(ListAddressBalancesRequest {
+    let mut request = tonic::Request::new(ListBalancesRequest {
         owner: Some(owner.clone()),
         page_size,
         after_token: after_token.map(Into::into),
@@ -723,7 +708,7 @@ async fn list_balances(
             .insert("x-sui-checkpoint", checkpoint.to_string().parse().unwrap());
     }
 
-    let response = client.list_address_balances(request).await?.into_inner();
+    let response = client.list_balances(request).await?.into_inner();
 
     let after_token = response
         .has_next_page()
@@ -735,7 +720,7 @@ async fn list_balances(
         .into_iter()
         .map(|b| {
             assert_eq!(b.owner(), &owner, "Owner mismatch in balance response");
-            (b.coin_type().to_owned(), b.balance())
+            (b.coin_type().to_owned(), b.total_balance())
         })
         .collect();
 
@@ -754,7 +739,7 @@ async fn get_balance(
         .expect("Failed to connect to Consistent Store");
 
     let owner = owner.to_string();
-    let mut request = tonic::Request::new(GetAddressBalanceRequest {
+    let mut request = tonic::Request::new(GetBalanceRequest {
         owner: Some(owner.clone()),
         coin_type: Some(coin_type.to_owned()),
     });
@@ -765,7 +750,7 @@ async fn get_balance(
             .insert("x-sui-checkpoint", checkpoint.to_string().parse().unwrap());
     }
 
-    let response = client.get_address_balance(request).await?.into_inner();
+    let response = client.get_balance(request).await?.into_inner();
 
     assert_eq!(
         response.owner(),
@@ -773,7 +758,7 @@ async fn get_balance(
         "Owner mismatch in balance response"
     );
 
-    Ok((response.coin_type().to_owned(), response.balance()))
+    Ok((response.coin_type().to_owned(), response.total_balance()))
 }
 
 async fn batch_get_balances(
@@ -785,10 +770,10 @@ async fn batch_get_balances(
         .await
         .expect("Failed to connect to Consistent Store");
 
-    let mut request = tonic::Request::new(BatchGetAddressBalancesRequest {
+    let mut request = tonic::Request::new(BatchGetBalancesRequest {
         requests: requests
             .into_iter()
-            .map(|(owner, coin_type)| GetAddressBalanceRequest {
+            .map(|(owner, coin_type)| GetBalanceRequest {
                 owner: Some(owner.to_string()),
                 coin_type: Some(coin_type),
             })
@@ -802,11 +787,17 @@ async fn batch_get_balances(
     }
 
     Ok(client
-        .batch_get_address_balances(request)
+        .batch_get_balances(request)
         .await?
         .into_inner()
         .balances
         .into_iter()
-        .map(|b| (b.owner().to_owned(), b.coin_type().to_owned(), b.balance()))
+        .map(|b| {
+            (
+                b.owner().to_owned(),
+                b.coin_type().to_owned(),
+                b.total_balance(),
+            )
+        })
         .collect())
 }

@@ -153,6 +153,9 @@ pub(super) fn get_balance(
         .unwrap_or(0);
     let address_balance = u64::try_from(address_balance)
         .with_context(|| format!("Bad address balance for type {coin_type}: {address_balance}"))?;
+    println!("Address balance: {}", address_balance);
+    println!("Coin balance: {}", coin_balance);
+    println!("Total balance: {}", address_balance + coin_balance);
 
     Ok(grpc::Balance {
         owner: Some(key.owner.to_string()),

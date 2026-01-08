@@ -397,7 +397,7 @@ impl TryFrom<Balance> for Edge<(TypeTag, u64)> {
             .parse()
             .context("invalid coin type")?;
 
-        let balance: u64 = proto.balance.unwrap_or(0);
+        let balance: u64 = proto.total_balance.unwrap_or(0);
 
         let token: Vec<u8> = proto.page_token.unwrap_or_default().into();
 
