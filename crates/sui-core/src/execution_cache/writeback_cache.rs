@@ -2274,6 +2274,23 @@ impl ExecutionCacheWrite for WritebackCache {
     fn write_object_entry_for_test(&self, object: Object) {
         self.write_object_entry(&object.id(), object.version(), object.into());
     }
+
+    fn reload_objects(&self, objects: Vec<(ObjectID, Object)>) {
+        self.reload_cached(objects);
+    }
+
+    fn update_underlying(&self, clear_cache: bool) {
+        self.store
+            .perpetual_tables
+            .objects
+            .db
+            .try_catch_up_with_primary()
+            .unwrap();
+
+        if clear_cache {
+            self.clear_object_cache();
+        }
+    }
 }
 
 implement_passthrough_traits!(WritebackCache);
@@ -2406,23 +2423,6 @@ impl GlobalStateHashStore for WritebackCache {
         }
 
         Box::new(dirty_objects.into_values())
-    }
-
-    fn reload_objects(&self, objects: Vec<(ObjectID, Object)>) {
-        self.reload_cached(objects);
-    }
-
-    fn update_underlying(&self, clear_cache: bool) {
-        self.store
-            .perpetual_tables
-            .objects
-            .db
-            .try_catch_up_with_primary()
-            .unwrap();
-
-        if clear_cache {
-            self.clear_object_cache();
-        }
     }
 }
 
