@@ -226,6 +226,12 @@ impl<F: MoveFlavor + fmt::Debug> RootPackage<F> {
         self.filtered_graph.packages()
     }
 
+    /// Return the list of all packages in the root package's package graph (including itself and all
+    /// transitive dependencies). This includes the non-duplicate addresses only, sorted in topological order.
+    pub fn sorted_packages(&self) -> Vec<PackageInfo<'_, F>> {
+        self.filtered_graph.sorted_packages()
+    }
+
     /// Update the dependencies in the lockfile for this environment to match the dependency graph
     /// represented by `self`.
     ///

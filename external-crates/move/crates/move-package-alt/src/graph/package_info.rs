@@ -121,6 +121,12 @@ impl<'graph, F: MoveFlavor> PackageInfo<'graph, F> {
             .map(|publication| &publication.addresses)
     }
 
+    /// Returns true if the package is a system package.
+    // pub fn is_system_package(&self) -> bool {
+    //     let system_packages = F::system_deps(self.package().environment_name())
+    //     // self.package().publication().is_some_and()
+    // }
+
     /// Returns true if the node is the root of the package graph
     pub fn is_root(&self) -> bool {
         self.graph
