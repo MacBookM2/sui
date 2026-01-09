@@ -504,6 +504,28 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                         )*
                     }
                 }
+
+                /// Opens the tables in read-only mode but returns the primary struct type.
+                /// This is used by DBSimulator to share the database with the running Sui node.
+                /// Write operations happen in memory via WritebackCache, not to the actual DB.
+                #[allow(unused_parens)]
+                pub fn open_tables_read_only_as_rw_impl(
+                    path: std::path::PathBuf,
+                    metric_conf: typed_store::rocks::MetricConf,
+                ) -> Self {
+                    let p: std::path::PathBuf = tempfile::tempdir()
+                        .expect("Failed to open temporary directory")
+                        .keep();
+
+                    Self::open_tables_impl(
+                        path,
+                        Some(p),
+                        metric_conf,
+                        None,
+                        None,
+                        false,
+                    )
+                }
             }
 
             // <----------- This section generates the read-write open logic and other common utils -------------->
@@ -555,6 +577,21 @@ pub fn derive_dbmap_utils_general(input: TokenStream) -> TokenStream {
                     metric_conf: typed_store::rocks::MetricConf,
                     ) -> #secondary_db_map_struct_name #generics {
                     #secondary_db_map_struct_name::open_tables_read_only(primary_path, with_secondary_path, metric_conf, global_db_options_override)
+                }
+
+                /// Opens the DB in read-only mode but returns an instance of the primary struct.
+                /// This is used by DBSimulator to share the database with a running Sui node.
+                /// All reads come from the actual DB, writes go to memory via WritebackCache.
+                pub fn get_rw_handle_readonly_inner(
+                    primary_path: std::path::PathBuf,
+                    metric_conf: typed_store::rocks::MetricConf,
+                ) -> Self {
+                    let inner = #intermediate_db_map_struct_name::open_tables_read_only_as_rw_impl(primary_path, metric_conf);
+                    Self {
+                        #(
+                            #field_names: inner.#field_names,
+                        )*
+                    }
                 }
             }
             #secondary_code

@@ -174,6 +174,16 @@ impl AuthorityPerpetualTables {
         parent_path.join("perpetual")
     }
 
+    /// Open the tables in read-only mode but return a read-write compatible handle.
+    /// This is used by DBSimulator to share the database with the running Sui node.
+    /// All reads come from the actual DB, writes go to memory via WritebackCache.
+    pub fn open_readonly_as_rw(parent_path: &Path) -> AuthorityPerpetualTables {
+        Self::get_rw_handle_readonly_inner(
+            Self::path(parent_path),
+            MetricConf::new("perpetual_readonly_as_rw"),
+        )
+    }
+
     #[cfg(not(tidehunter))]
     pub fn open(
         parent_path: &Path,
