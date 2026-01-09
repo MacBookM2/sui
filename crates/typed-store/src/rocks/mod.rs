@@ -261,6 +261,16 @@ impl Database {
         }
     }
 
+    /// Sync secondary rocksdb instance with primary (mevsui extension for arb-bot)
+    pub fn try_catch_up_with_primary(&self) -> Result<(), rocksdb::Error> {
+        match &self.storage {
+            Storage::Rocks(db) => db.underlying.try_catch_up_with_primary(),
+            Storage::InMemory(_) => Ok(()),
+            #[cfg(tidehunter)]
+            Storage::TideHunter(_) => Ok(()),
+        }
+    }
+
     pub fn delete_file_in_range<K: AsRef<[u8]>>(
         &self,
         cf: &impl AsColumnFamilyRef,
