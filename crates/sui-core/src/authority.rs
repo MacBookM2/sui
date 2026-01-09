@@ -174,7 +174,7 @@ use typed_store::TypedStoreError;
 
 use crate::authority::authority_per_epoch_store::{AuthorityPerEpochStore, CertTxGuard};
 use crate::authority::authority_per_epoch_store_pruner::AuthorityPerEpochStorePruner;
-use crate::authority::authority_store::{ExecutionLockReadGuard, ObjectLockStatus};
+use crate::authority::authority_store::ExecutionLockReadGuard;
 use crate::authority::authority_store_pruner::{
     AuthorityStorePruner, EPOCH_DURATION_MS_FOR_TESTING,
 };
