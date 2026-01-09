@@ -343,7 +343,6 @@ async fn test_publish_package(
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(pubfile_path),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -654,7 +653,6 @@ async fn test_ptb_publish_and_complex_arg_resolution() -> Result<(), anyhow::Err
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await;
@@ -959,7 +957,6 @@ async fn test_move_call_args_linter_command() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -1270,7 +1267,6 @@ async fn test_package_publish_command() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -1442,7 +1438,6 @@ async fn test_delete_shared_object() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -1569,7 +1564,6 @@ async fn test_receive_argument() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -1716,7 +1710,6 @@ async fn test_receive_argument_by_immut_ref() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -1863,7 +1856,6 @@ async fn test_receive_argument_by_mut_ref() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -2012,7 +2004,6 @@ async fn test_package_publish_command_with_unpublished_dependency_succeeds()
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await?;
@@ -2096,7 +2087,6 @@ async fn test_package_publish_command_with_unpublished_dependency_fails()
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await;
@@ -2152,7 +2142,6 @@ async fn test_package_publish_command_non_zero_unpublished_dep_fails() -> Result
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await;
@@ -2214,7 +2203,6 @@ async fn test_package_publish_command_failure_invalid() -> Result<(), anyhow::Er
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await;
@@ -2267,7 +2255,6 @@ async fn test_package_publish_test_flag() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await;
@@ -2334,7 +2321,6 @@ async fn test_package_publish_empty() -> Result<(), anyhow::Error> {
             build_env: Some("testnet".to_string()),
             pubfile_path: Some(tempdir()?.path().join("localnet.toml")),
         },
-        ..Default::default()
     })
     .execute(context)
     .await;
