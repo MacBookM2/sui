@@ -1358,6 +1358,29 @@ impl WritebackCache {
         self.packages.invalidate_all();
         assert_empty(&self.packages);
     }
+
+    /// Reload objects into the object_by_id_cache (mevsui extension for arb-bot)
+    pub fn reload_cached(&self, objects: Vec<(ObjectID, Object)>) {
+        use sui_types::storage::ObjectStore;
+        for (object_id, object) in objects {
+            let version = object.version();
+            let _ = self.object_by_id_cache.insert(
+                &object_id,
+                LatestObjectCacheEntry::Object(version, object.into()),
+                Ticket::Write,
+            );
+        }
+    }
+
+    /// Clear object_by_id_cache (mevsui extension for arb-bot)
+    pub fn clear_object_cache(&self) {
+        self.object_by_id_cache.invalidate_all();
+    }
+
+    /// Get access to underlying store for mevsui arb-bot compatibility
+    pub fn store(&self) -> &Arc<AuthorityStore> {
+        &self.store
+    }
 }
 
 impl ExecutionCacheAPI for WritebackCache {}
@@ -2383,6 +2406,23 @@ impl GlobalStateHashStore for WritebackCache {
         }
 
         Box::new(dirty_objects.into_values())
+    }
+
+    fn reload_objects(&self, objects: Vec<(ObjectID, Object)>) {
+        self.reload_cached(objects);
+    }
+
+    fn update_underlying(&self, clear_cache: bool) {
+        self.store
+            .perpetual_tables
+            .objects
+            .db
+            .try_catch_up_with_primary()
+            .unwrap();
+
+        if clear_cache {
+            self.clear_object_cache();
+        }
     }
 }
 

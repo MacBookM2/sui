@@ -612,6 +612,12 @@ pub trait ExecutionCacheWrite: Send + Sync {
     /// transaction outputs.
     #[cfg(test)]
     fn write_object_entry_for_test(&self, object: Object);
+
+    /// Reload objects into the cache (mevsui extension for arb-bot)
+    fn reload_objects(&self, objects: Vec<(ObjectID, Object)>);
+
+    /// Update the underlying store by catching up with primary (mevsui extension for arb-bot)
+    fn update_underlying(&self, clear_cache: bool);
 }
 
 pub trait CheckpointCache: Send + Sync {
