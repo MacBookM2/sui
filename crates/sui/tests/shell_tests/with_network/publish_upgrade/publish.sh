@@ -17,6 +17,8 @@
 #
 # We publish A, B, C, D, E in order
 
+chain_id=$(sui client --client.config $CONFIG chain-identifier)
+
 add_env_to_toml() {
   echo "[environments]" >> $1/Move.toml
   echo "localnet = \"$chain_id\"" >> $1/Move.toml
@@ -37,14 +39,12 @@ extract_published() {
   ' "$@"
 }
 
-chain_id=$(sui client --client.config $CONFIG chain-identifier)
-
 for i in a b c d e
 do
   echo === publishing $i ===
   add_env_to_toml $i
 
-  sui client --client.config $CONFIG publish $i > /dev/null || echo "failed to build $i"
+  sui client --client.config $CONFIG publish
   extract_published $i/Published.toml
 
 done
